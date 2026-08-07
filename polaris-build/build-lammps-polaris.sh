@@ -4,7 +4,7 @@
 #PBS -l filesystems=home:eagle
 #PBS -q debug
 #PBS -N lammps-build
-#PBS -A YOUR_PROJECT
+#PBS -A ChemGraph
 
 set -eo pipefail
 
@@ -35,22 +35,6 @@ module list
 
 conda activate base
 conda activate "${repo_root}/mofa_env"
-
-if ! command -v cythonize >/dev/null; then
-    echo "Cython is not installed in ${repo_root}/mofa_env."
-    echo "Recreate or update the environment from envs/environment-polaris.yml."
-    exit 2
-fi
-
-if ! python -c "import build" >/dev/null 2>&1; then
-    echo "The Python build package is not installed in ${repo_root}/mofa_env."
-    echo "Recreate or update the environment from envs/environment-polaris.yml."
-    exit 2
-fi
-
-python -V
-command -v python
-command -v cythonize
 
 export CRAYPE_LINK_TYPE=dynamic
 export LDFLAGS="-Wl,--allow-multiple-definition"
