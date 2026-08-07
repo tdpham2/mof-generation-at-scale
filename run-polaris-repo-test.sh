@@ -4,7 +4,7 @@
 #PBS -l filesystems=home:eagle
 #PBS -q debug-scaling
 #PBS -N mofa-test
-#PBS -A YOUR_PROJECT
+#PBS -A ChemGraph
 
 set -euo pipefail
 
@@ -25,6 +25,9 @@ export CP2K_DATA_DIR="${repo_root}/deps/cp2k-2025.1/data"
 export OPENBLAS_NUM_THREADS=1
 export GOTO_NUM_THREADS=1
 export OMP_NUM_THREADS=1
+# Keep Python multiprocessing sockets below the AF_UNIX path-length limit.
+# LocalProvider workers inherit this node-local temporary directory.
+export TMPDIR=/tmp
 
 runtime_cache="${repo_root}/.runtime-cache/${PBS_JOBID}"
 mkdir -p "${runtime_cache}/matplotlib" "${runtime_cache}/xdg"
