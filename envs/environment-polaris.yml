@@ -18,9 +18,18 @@ dependencies:
 
   - pip
   - pip:
+    # LAMMPS Python/ML-IAP build requirements. Keeping these here ensures
+    # LAMMPS is built and installed in the same environment as MOFA.
+    - build
+    - cython
+    - wheel
+
     - torch==2.1.0
     - numpy<2  # torch 2.1 is built with numpy 1
+    - redis==5.*  # Colmena 0.7 is incompatible with redis-py 8 blocking reads
 
     # Other stuff
     - tqdm
-    - -e ..[test,cueq]
+    # CuEquivariance 0.4 requires torch>=2.4, but this environment uses
+    # torch 2.1 for Polaris. MACE falls back to its e3nn implementation.
+    - -e ..

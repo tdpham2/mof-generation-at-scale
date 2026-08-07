@@ -1,5 +1,10 @@
 # Installing on Polaris
 
+> **Current repository-local setup:** Follow
+> [`../polaris-build/instruction.md`](../polaris-build/instruction.md)
+> for the validated installation in which MOFA and LAMMPS use the same Conda
+> environment. The material below is retained as a legacy reference.
+
 Polaris is a system with NVIDIA GPUs and AMD Zen3 processors. 
 Install MOFA and its dependencies by following these guides.
 
@@ -144,4 +149,3 @@ home=/lus/eagle/projects/MOFA/lward/lammps-main/build-mliap
 source $home/../venv/bin/activate
 $home/lmp $@
 ```
-

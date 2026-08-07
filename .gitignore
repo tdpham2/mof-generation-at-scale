@@ -166,3 +166,14 @@ logs/
 
 # MOFA project related 
 run 
+
+# Repository-local environments, dependency builds, and runtime artifacts
+*.swp
+/mofa_env/
+/deps/
+/.runtime-cache/
+/test_installation/
+/core.*
+/dump.rdb
+/input-files/mace/mace-mp0_medium
+/input-files/mace/mace-mp0_medium-mliap_lammps.pt

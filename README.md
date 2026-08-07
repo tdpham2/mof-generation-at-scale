@@ -15,6 +15,9 @@ Install the environment file appropriate for your system with a command similar 
 conda env create --file envs/environment-cpu.yml --force
 ```
 
+For a complete CP2K, LAMMPS, MOFA, and workflow setup on Polaris, follow
+the [Polaris installation guide](polaris-build/instruction.md).
+
 If solving is slow try updating to the newest version of conda and using the `libmamba` solver:
 
 ```bash
