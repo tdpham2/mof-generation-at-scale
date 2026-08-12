@@ -34,37 +34,16 @@ mkdir -p "${runtime_cache}/matplotlib" "${runtime_cache}/xdg"
 export MPLCONFIGDIR="${runtime_cache}/matplotlib"
 export XDG_CACHE_HOME="${runtime_cache}/xdg"
 
-lammps_exe="${repo_root}/deps/lammps/build-mliap/lmp"
-cp2k_shell="${repo_root}/deps/cp2k-2025.1/exe/local_cuda/cp2k_shell.psmp"
+lammps_root="${repo_root}/deps/test/lammps-22Jul2025"
+lammps_exe="${lammps_root}/build-mliap-no-mpi/lmp"
+lammps_activate="${lammps_root}/venv/bin/activate"
 mace_model="${repo_root}/input-files/mace/mace-mp0_medium-mliap_lammps.pt"
 affinity_script="${repo_root}/bin/set-affinity-gpu-polaris.sh"
 
-for required_file in "${lammps_exe}" "${cp2k_shell}" "${mace_model}" "${affinity_script}"; do
-    if [[ ! -x "${required_file}" && "${required_file}" != "${mace_model}" ]]; then
-        echo "Required executable is unavailable: ${required_file}"
-        exit 2
-    fi
-    if [[ ! -e "${required_file}" ]]; then
-        echo "Required file is unavailable: ${required_file}"
-        exit 2
-    fi
-done
-
-for required_command in redis-server redis-cli mongod chargemol simulate monitor_utilization mpiexec; do
-    if ! command -v "${required_command}" >/dev/null; then
-        echo "Required command is unavailable: ${required_command}"
-        exit 2
-    fi
-done
 
 redis_major=$(python -c 'import redis; print(redis.__version__.split(".")[0])')
 if [[ "${redis_major}" != "5" ]]; then
     echo "MOFA requires redis-py 5.x for Colmena 0.7; found $(python -c 'import redis; print(redis.__version__)')"
-    exit 2
-fi
-
-if ! ldd "${lammps_exe}" | grep -q "${repo_root}/mofa_env/lib/libpython3.10"; then
-    echo "LAMMPS is not linked to the repository's MOFA Python 3.10 environment."
     exit 2
 fi
 
@@ -81,13 +60,13 @@ cleanup() {
         wait "${redis_pid}" 2>/dev/null || true
     fi
     if [[ "${mps_started}" == true ]]; then
-        mpiexec -n "${num_nodes}" --ppn 1 "${repo_root}/bin/disable_mps_polaris.sh" || true
+        mpiexec --no-vni -n "${num_nodes}" --ppn 1 "${repo_root}/bin/disable_mps_polaris.sh" || true
     fi
     exit "${status}"
 }
 trap cleanup EXIT INT TERM
 
-mpiexec -n "${num_nodes}" --ppn 1 "${repo_root}/bin/enable_mps_polaris.sh"
+mpiexec --no-vni -n "${num_nodes}" --ppn 1 "${repo_root}/bin/enable_mps_polaris.sh"
 mps_started=true
 
 redis_host=$(hostname)

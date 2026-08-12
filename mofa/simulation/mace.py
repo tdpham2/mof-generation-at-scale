@@ -1,5 +1,6 @@
 """Run computations backed by MACE"""
 import shutil
+from collections import deque
 from dataclasses import dataclass
 from functools import lru_cache
 from string import Template
@@ -75,6 +76,15 @@ pair_style mliap unified $model_path 0
 pair_coeff * * $elements
 ''')
 }
+
+
+def _read_log_tail(path: Path, line_count: int = 50) -> str:
+    """Read a bounded tail from a subprocess log file."""
+    try:
+        with path.open(errors='replace') as fp:
+            return ''.join(deque(fp, maxlen=line_count)).rstrip()
+    except OSError:
+        return ''
 
 
 @lru_cache(1)
@@ -289,7 +299,15 @@ class MACERunner(MDInterface):
                 proc = run(list(self.lammps_cmd) + ['-i', inp_path.name], cwd=out_dir, stdout=fp, stderr=fe, env=env)
 
             if proc.returncode != 0:
-                raise ValueError(f'LAMMPS failed in {out_dir}')
+                message = [f'LAMMPS failed in {out_dir} with exit code {proc.returncode}']
+                for label, filename in (
+                    ('stderr (last 50 lines)', 'stderr.lmp'),
+                    ('stdout (last 50 lines)', 'stdout.lmp'),
+                ):
+                    tail = _read_log_tail(out_dir / filename)
+                    if tail:
+                        message.extend((f'--- {label} ---', tail))
+                raise ValueError('\n'.join(message))
 
             # Read the outputs
             with open(out_dir / 'dump.lammpstrj.all') as fp:

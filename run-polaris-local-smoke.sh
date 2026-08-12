@@ -4,14 +4,15 @@
 #PBS -l filesystems=home:eagle
 #PBS -q debug
 #PBS -N mofa-smoke
-#PBS -A YOUR_PROJECT
+#PBS -A ChemGraph
 
 set -euo pipefail
 
 cd "${PBS_O_WORKDIR:?Submit this script from the MOFA repository root}"
 repo_root=$PWD
 echo "Repository: ${repo_root}"
-# Runtime libraries used by the local LAMMPS build.
+# Runtime for the MOFA workflow and CP2K. The LAMMPS launcher selects its
+# ABI-matched Python environment and CUDA module in its child process.
 module reset
 module use /soft/modulefiles
 module load gcc
@@ -35,38 +36,16 @@ export XDG_CACHE_HOME="${runtime_cache}/xdg"
 
 cp2k_shell="${repo_root}/deps/cp2k-2025.1/exe/local_cuda/cp2k_shell.ssmp"
 mace_model="${repo_root}/input-files/mace/mace-mp0_medium-mliap_lammps.pt"
-lammps_exe="${repo_root}/deps/lammps/build-mliap/lmp"
+lammps_root="${repo_root}/deps/test/lammps-22Jul2025"
+lammps_exe="${lammps_root}/build-mliap-no-mpi/lmp"
+lammps_activate="${lammps_root}/venv/bin/activate"
 
 if [[ ! -x "${cp2k_shell}" ]]; then
     echo "Missing ${cp2k_shell}"
-    echo 'Create it with: make -C deps/cp2k-2025.1 ARCH=local_cuda VERSION="ssmp psmp" cp2k_shell'
+    echo 'Build CP2K first with build-cp2k.sh (see polaris-build/instruction.md).'
     exit 2
 fi
 
-if [[ ! -f "${mace_model}" ]]; then
-    echo "Missing ${mace_model}"
-    echo "Prepare it with: (cd input-files/mace && bash get-macemp-0a.sh)"
-    exit 2
-fi
-
-if [[ ! -x "${lammps_exe}" ]]; then
-    echo "Missing ${lammps_exe}"
-    echo "Build it first with: qsub polaris-build/build-lammps-polaris.sh"
-    exit 2
-fi
-
-if ! ldd "${lammps_exe}" | grep -q "${repo_root}/mofa_env/lib/libpython3.10"; then
-    echo "LAMMPS is not yet linked to the MOFA Python 3.10 environment."
-    echo "Build it first with: qsub polaris-build/build-lammps-polaris.sh"
-    exit 2
-fi
-
-for required_command in redis-server mongod chargemol simulate monitor_utilization; do
-    if ! command -v "${required_command}" >/dev/null; then
-        echo "Required command is unavailable: ${required_command}"
-        exit 2
-    fi
-done
 
 redis_log="${repo_root}/redis-${PBS_JOBID}.log"
 redis-server \

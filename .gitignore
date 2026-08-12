@@ -177,3 +177,9 @@ run
 /dump.rdb
 /input-files/mace/mace-mp0_medium
 /input-files/mace/mace-mp0_medium-mliap_lammps.pt
+
+# Local PBS job artifacts
+/mofa-test.*
+# CP2K standalone-test run outputs (large .cube files, per-job run dirs)
+cp2k-test/run-*/
+*.cube

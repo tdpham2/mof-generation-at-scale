@@ -26,10 +26,12 @@ dependencies:
 
     - torch==2.1.0
     - numpy<2  # torch 2.1 is built with numpy 1
+    # Kokkos ML-IAP exposes device arrays through CuPy. CuPy 14 requires
+    # NumPy 2, so retain the latest CUDA 12 release compatible with numpy<2.
+    - cupy-cuda12x==13.6.0
     - redis==5.*  # Colmena 0.7 is incompatible with redis-py 8 blocking reads
 
     # Other stuff
     - tqdm
     # CuEquivariance 0.4 requires torch>=2.4, but this environment uses
     # torch 2.1 for Polaris. MACE falls back to its e3nn implementation.
-    - -e ..

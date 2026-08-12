@@ -38,7 +38,8 @@ class Config(LocalConfig):
     @property
     def dft_cmd(self) -> str:
         return str(
-            ROOT / "deps/cp2k-2025.1/exe/local_cuda/cp2k_shell.ssmp"
+            ROOT
+            / "deps/cp2k-2025.1/exe/local_cuda/cp2k_shell.ssmp"
         )
 
 
