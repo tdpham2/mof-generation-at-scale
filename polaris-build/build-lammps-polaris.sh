@@ -55,6 +55,15 @@ echo "========== Creating the LAMMPS venv =========="
 python3 -m venv venv
 source venv/bin/activate
 pip install -r ../python/wheel_requirements.txt
+pip install \
+    "torch==2.5.0" \
+    cuequivariance-torch \
+    cuequivariance \
+    cuequivariance-ops-torch-cu12 \
+    cupy-cuda12x \
+    "mace-torch==0.3.13" \
+    cython \
+    "numpy<2"
 
 echo
 echo "========== Building LAMMPS =========="
@@ -106,4 +115,4 @@ python -c "import lammps; print('LAMMPS Python package:', lammps.__file__)"
 
 echo
 echo "LAMMPS installation completed successfully: ${build_dir}/lmp"
-echo "Next: install MACE into this venv (see polaris-build/instruction.md step 4)."
+echo "Next: prepare the MACE model (see polaris-build/instruction.md step 5)."
