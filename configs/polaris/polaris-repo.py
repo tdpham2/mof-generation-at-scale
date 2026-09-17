@@ -47,17 +47,28 @@ class Config(SingleJobHPCConfig):
     raspa_version: RASPAVersion = "raspa2"
     raspa_cmd: tuple[str, ...] = (str(ROOT / "mofa_env/bin/simulate"),)
 
+    # The site `conda` module's collection has been broken (all its modules
+    # were removed), so this sources the local miniconda from ~/.bashrc
+    # directly instead of `module load conda`. See build-cp2k.sh's local
+    # toolchain note.
+    #
+    # mofa_env's compiled deps (raspa2, chargemol, torch, cupy) resolve their
+    # own libraries (bundled nvidia-*-cu12 pip packages, or shared libs copied
+    # into mofa_env/lib at conda-build time) with no module loaded at all, so
+    # this does not load a `gcc` or `cudatoolkit-standalone` module -- doing
+    # so is not just unnecessary, `module load gcc` actively breaks mpi4py by
+    # deactivating cray-mpich (Lmod prints "Inactive Modules: cray-libsci,
+    # cray-mpich" when this happens). The one thing mofa_env's mpi4py does
+    # need from a module is the standard-ABI MPI shim, which the default
+    # PrgEnv-nvidia stack does not provide on its own -- cray-mpich only ships
+    # libmpi_nvidia.so.12, not the libmpi.so.12 mpi4py's wheel expects -- so
+    # cray-mpich-abi is loaded in place of it.
     worker_init: str = f"""
 module use /soft/modulefiles
-if [[ -n "${{CONDA_EXE:-}}" ]]; then
-    source "${{CONDA_EXE%/bin/conda}}/etc/profile.d/conda.sh"
-fi
 module reset
 module use /soft/modulefiles
-module load gcc
-module load cudatoolkit-standalone/12.8
-module load conda
-source "${{CONDA_EXE%/bin/conda}}/etc/profile.d/conda.sh"
+module load cray-mpich-abi
+source "/lus/eagle/projects/datascience/hari/.local/miniconda3/etc/profile.d/conda.sh"
 conda activate "{ROOT}/mofa_env"
 export PATH="{ROOT}/mofa_env/bin:${{PATH}}"
 export OPENBLAS_NUM_THREADS=1
@@ -70,53 +81,6 @@ export XDG_CACHE_HOME="${{runtime_cache}}/xdg"
 cd "{ROOT}"
 which python
 hostname
-""".strip()
-
-    cp2k_worker_init: str = f"""
-module use /soft/modulefiles
-if [[ -z "${{CONDA_EXE:-}}" ]]; then
-    module load conda
-fi
-conda_sh="${{CONDA_EXE%/bin/conda}}/etc/profile.d/conda.sh"
-source "${{conda_sh}}"
-module reset
-module use /soft/modulefiles
-if module -t list 2>&1 | grep -q '^PrgEnv-nvidia/'; then
-    module swap PrgEnv-nvidia PrgEnv-gnu
-elif ! module -t list 2>&1 | grep -q '^PrgEnv-gnu/'; then
-    module load PrgEnv-gnu
-fi
-if module -t list 2>&1 | grep -q '^gcc-native/14'; then
-    module swap gcc-native/14 gcc-native/12.3
-else
-    module load gcc-native/12.3
-fi
-module unload cray-libsci 2>/dev/null || true
-module unload cray-fftw 2>/dev/null || true
-module load cray-libsci
-module load cray-fftw
-module load cuda/11.8
-module load craype-accel-nvidia80
-module unload cuda/11.8
-module load cudatoolkit-standalone/12.8.1
-source "${{conda_sh}}"
-conda activate "{ROOT}/mofa_env"
-export PATH="{ROOT}/mofa_env/bin:${{PATH}}"
-export CP2K_DATA_DIR="{ROOT}/deps/cp2k-2025.1/data"
-export CUDA_PATH="${{CUDA_HOME}}"
-export MPICH_GPU_SUPPORT_ENABLED=1
-export OPENBLAS_NUM_THREADS=1
-export GOTO_NUM_THREADS=1
-export OMP_NUM_THREADS=1
-ulimit -c 0
-runtime_cache="${{TMPDIR:-/tmp}}/mofa-${{PBS_JOBID}}"
-mkdir -p "${{runtime_cache}}/matplotlib" "${{runtime_cache}}/xdg"
-export MPLCONFIGDIR="${{runtime_cache}}/matplotlib"
-export XDG_CACHE_HOME="${{runtime_cache}}/xdg"
-cd "{ROOT}"
-which python
-hostname
-unset conda_sh
 """.strip()
 
     @computed_field
@@ -126,10 +90,11 @@ unset conda_sh
         if self.run_dir is None:
             raise ValueError("run_dir must be set before constructing dft_cmd")
         affinity = ROOT / "bin/set-affinity-gpu-polaris.sh"
-        cp2k = (
-            ROOT
-            / "deps/cp2k-2025.1/exe/local_cuda/cp2k_shell.psmp"
-        )
+        # run-cp2k-polaris.sh loads the module stack CP2K was built against
+        # (see build-cp2k.sh) fresh for each rank, the same way lammps_cmd
+        # routes through run-lammps-polaris.sh. worker_init only activates
+        # mofa_env.
+        cp2k = ROOT / "bin/run-cp2k-polaris.sh"
         hostfiles = self.run_dir.absolute() / "cp2k-hostfiles"
         return (
             f"env MPICH_OFI_CXI_PID_BASE={CP2K_CXI_PID_BASE} "
@@ -158,11 +123,7 @@ unset conda_sh
         for executor in config.executors:
             provider = getattr(executor, "provider", None)
             if provider is not None and hasattr(provider, "worker_init"):
-                provider.worker_init = (
-                    self.cp2k_worker_init
-                    if executor.label == "cp2k"
-                    else self.worker_init
-                )
+                provider.worker_init = self.worker_init
 
             if executor.label not in NO_VNI_EXECUTORS:
                 continue

@@ -35,3 +35,21 @@ dependencies:
     - tqdm
     # CuEquivariance 0.4 requires torch>=2.4, but this environment uses
     # torch 2.1 for Polaris. MACE falls back to its e3nn implementation.
+
+    # Core mofa package dependencies from pyproject.toml, otherwise missing
+    # here since this file does not `pip install -e .` the mofa package.
+    - colmena==0.7.*
+    - more-itertools
+    - parsl>=2023.04
+    - ase>3.22
+    - rdkit>2024
+    - pymatgen
+    - pytorch-lightning
+    - wandb
+    - imageio
+    - scikit-learn
+    - mace-torch==0.3.13
+    - torch-dftd
+    - gpustat
+    - pymongo>=4
+    - pandas

@@ -185,7 +185,8 @@ if __name__ == "__main__":
     lmp_runner = MACERunner(lammps_cmd=hpc_config.lammps_cmd,
                             model_path=Path(args.mace_model_path).absolute(),
                             run_dir=Path('/dev/shm/lmp_run' if args.lammps_on_ramdisk else run_dir / 'lmp_run'),
-                            delete_finished=args.lammps_on_ramdisk)
+                            delete_finished=args.lammps_on_ramdisk,
+                            device=hpc_config.torch_device)
     md_fun = partial(lmp_runner.run_molecular_dynamics, report_frequency=args.md_snapshots_freq)
     update_wrapper(md_fun, lmp_runner.run_molecular_dynamics)
     sim_config = SimulationConfig(md_length=args.md_timesteps, md_report=args.md_snapshots_freq)

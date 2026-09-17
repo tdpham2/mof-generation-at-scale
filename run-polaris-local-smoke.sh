@@ -1,10 +1,10 @@
 #!/bin/bash -l
-#PBS -l select=1:system=polaris
+#PBS -l select=2:system=polaris
 #PBS -l walltime=01:00:00
 #PBS -l filesystems=home:eagle
 #PBS -q debug
 #PBS -N mofa-smoke
-#PBS -A ChemGraph
+#PBS -A datascience
 
 set -euo pipefail
 
@@ -15,14 +15,16 @@ echo "Repository: ${repo_root}"
 # ABI-matched Python environment and CUDA module in its child process.
 module reset
 module use /soft/modulefiles
-module load gcc
-module load cudatoolkit-standalone/12.8
-module load conda
-conda activate base
+#module load gcc
+#module load cudatoolkit-standalone/12.8
+module load cray-mpich-abi
+source "/lus/eagle/projects/datascience/hari/.local/miniconda3/etc/profile.d/conda.sh"
+#module load conda
+#conda activate base
 
 conda activate "${repo_root}/mofa_env"
 export PATH="${repo_root}/mofa_env/bin:${PATH}"
-export CP2K_DATA_DIR="${repo_root}/deps/cp2k-2025.1/data"
+export CP2K_DATA_DIR="${repo_root}/deps/cp2k/data"
 export OPENBLAS_NUM_THREADS=1
 export GOTO_NUM_THREADS=1
 export OMP_NUM_THREADS=1
@@ -34,7 +36,7 @@ mkdir -p "${runtime_cache}/matplotlib" "${runtime_cache}/xdg"
 export MPLCONFIGDIR="${runtime_cache}/matplotlib"
 export XDG_CACHE_HOME="${runtime_cache}/xdg"
 
-cp2k_shell="${repo_root}/deps/cp2k-2025.1/exe/local_cuda/cp2k_shell.ssmp"
+cp2k_shell="${repo_root}/deps/cp2k/exe/local_cuda/cp2k_shell.ssmp"
 mace_model="${repo_root}/input-files/mace/mace-mp0_medium-mliap_lammps.pt"
 lammps_root="${repo_root}/deps/test/lammps-22Jul2025"
 lammps_exe="${lammps_root}/build-mliap-no-mpi/lmp"
