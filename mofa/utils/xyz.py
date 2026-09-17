@@ -4,8 +4,6 @@ from typing import Collection
 
 from rdkit.Chem import rdDetermineBonds, AllChem
 from rdkit import Chem
-from openbabel import pybel
-from openbabel import openbabel as OB
 
 _generate_lock = Lock()
 
@@ -71,6 +69,12 @@ def unsaturated_xyz_to_xyz(xyz: str, exclude_atoms: Collection[int] = ()) -> str
     Returns:
         Best guess coordinates
     """
+    # Imported lazily: importing openbabel.pybel before torch/MACE loads a
+    # TorchScript checkpoint (mofa.simulation.mace._run_mace) segfaults inside
+    # libtorch's TorchScript deserializer -- see e3nn's CodeGenMixin.__setstate__,
+    # which calls torch.jit.load() while unpickling MACE-MP foundation models.
+    from openbabel import pybel
+    from openbabel import openbabel as OB
 
     pbmol = pybel.readstring("xyz", xyz)
     # some OBB C++ API black magic
