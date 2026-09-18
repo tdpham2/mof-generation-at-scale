@@ -267,6 +267,12 @@ on a login node, even with `--version`.
 Preflight validates the runtime. Full workflow validation requires running the
 smoke simulation below and inspecting its results.
 
+Sample inputs and standalone tests are also provided in
+[cp2k-test](../cp2k-test/README.md) and [lammps-test](../lammps-test/README.md).
+They use the same external runtime wrappers. The LAMMPS examples include their
+structure data and use the MACE model prepared above. Test outputs stay in
+ignored local run directories; only inputs, test code, and usage are shared.
+
 ## 5. Run simulations
 
 Once the prerequisites and login-node checks pass, no manual environment
