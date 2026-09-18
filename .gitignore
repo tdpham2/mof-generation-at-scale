@@ -187,6 +187,8 @@ run
 /cp2k-elpa-replay.[oe]*
 /cp2k-block32.[oe]*
 /lammps-diagnostic.[oe]*
+/cp2k-build.[oe]*
+/lammps-build.[oe]*
 # CP2K standalone-test run outputs (large .cube files, per-job run dirs)
 cp2k-test/run-*/
 *.cube

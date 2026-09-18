@@ -4,6 +4,10 @@ Follow the [Polaris setup guide](../polaris-build/instruction.md#1-configure-ext
 to configure external CP2K/LAMMPS paths, prepare models, and create `mofa_env_py312`.
 The existing external LAMMPS installation depends on Python under a private home
 directory; collaborators need an accessible matching runtime before executing jobs.
+The [external installation recipes](../polaris-build/instruction.md#build-separate-installations)
+use separate CP2K and LAMMPS source checkouts outside MOFA. The build scripts live
+in `polaris-build/`; the LAMMPS recipe keeps its Python runtime in that external
+checkout so it can be shared with collaborators who have filesystem access.
 
 After setup and login-node checks, submit from the repository root:
 

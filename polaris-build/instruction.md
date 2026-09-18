@@ -2,8 +2,11 @@
 
 Run setup and submission commands from the MOFA repository root on a Polaris
 login node. This guide covers the one-node `run-polaris-local-smoke.sh` and
-ten-node `run-polaris-repo-test.sh` workflows. Only MOFA is installed here;
-LAMMPS and CP2K are existing, separately managed installations.
+ten-node `run-polaris-repo-test.sh` workflows. MOFA, LAMMPS, and CP2K live in
+separate Git checkouts. This repository includes the Polaris installation
+scripts, but CP2K/LAMMPS sources, dependencies, Python environments, and compiled
+outputs belong in their external checkouts, outside MOFA and its `deps/` directory.
+MOFA calls their binaries through the wrappers in `bin/`.
 
 ## 1. Configure external installations
 
@@ -41,16 +44,108 @@ the LAMMPS directory is on Eagle. Access to the ChemGraph project filesystem
 is also required.
 
 A collaborator needs an accessible Python runtime and matching LAMMPS build,
-then must set `LAMMPS_ROOT`/`LAMMPS_VENV` accordingly. Making the existing runtime
-shareable is separate work; these scripts do not alter permissions or rebuild
-external software. Verify access from the collaborator's account before
-attempting installation validation or submitting jobs.
+then must set `LAMMPS_ROOT`/`LAMMPS_VENV` accordingly. The build recipe below creates
+Python inside the external LAMMPS checkout, avoiding a private-home interpreter.
+It does not change the existing installation or its permissions unless you
+explicitly select that checkout. Verify filesystem access from the collaborator's
+account before attempting validation or submitting jobs.
+
+### Build separate installations
+
+Skip this subsection if you already have accessible, compatible installations.
+The scripts shipped here are
+[build-cp2k-polaris.sh](build-cp2k-polaris.sh) and
+[build-lammps-polaris.sh](build-lammps-polaris.sh). They require pre-cloned sources
+at the revisions recorded from the September 2026 installations:
+
+| Software | Source revision | Build |
+| --- | --- | --- |
+| CP2K | [34658f03b9867a3335ace1b4af7b7736c33523bb](https://github.com/harikrishna1410/cp2k/commit/34658f03b9867a3335ace1b4af7b7736c33523bb), `polaris_build_sep_2026` branch of the CP2K fork | CP2K 2025.2 with Polaris/CUDA 13 patches, A100, ELPA, Cray MPI/LibSci. |
+| LAMMPS | [d51bbd4983a26e2da6f1550e1b41592690b02a90](https://github.com/lammps/lammps/commit/d51bbd4983a26e2da6f1550e1b41592690b02a90), upstream | Kokkos/CUDA, ML-IAP, EXTRA-MOLECULE, Python, and `BUILD_MPI=OFF`. |
+
+CP2K's fork supplies CUDA 13 compatibility changes for FFT, ELPA, and DBCSR;
+an unpatched 2025.2 checkout is not equivalent. Both scripts check the revision
+before building. These replace the old CP2K 2025.1/CUDA 12.8 and LAMMPS
+`stable_22Jul2025_update5` recipes.
+
+On a login node, choose a writable project directory visible from compute nodes
+and accessible to the intended users. Edit the first path below. Keep the MOFA
+checkout as your current directory:
+
+```bash
+export MOFA_SOFTWARE_ROOT=/lus/eagle/projects/ChemGraph/YOUR_DIRECTORY/soft
+export CP2K_ROOT="$MOFA_SOFTWARE_ROOT/cp2k"
+export LAMMPS_ROOT="$MOFA_SOFTWARE_ROOT/lammps"
+export CP2K_DATA_DIR="$CP2K_ROOT/data"
+export LAMMPS_VENV="$LAMMPS_ROOT/.venv"
+mkdir -p "$MOFA_SOFTWARE_ROOT"
+
+git clone --branch polaris_build_sep_2026 https://github.com/harikrishna1410/cp2k.git "$CP2K_ROOT"
+git -C "$CP2K_ROOT" checkout --detach 34658f03b9867a3335ace1b4af7b7736c33523bb
+git -C "$CP2K_ROOT" submodule update --init --recursive
+
+git clone --filter=blob:none --no-checkout https://github.com/lammps/lammps.git "$LAMMPS_ROOT"
+git -C "$LAMMPS_ROOT" checkout --detach d51bbd4983a26e2da6f1550e1b41592690b02a90
+git -C "$LAMMPS_ROOT" submodule update --init --recursive
+
+qsub -v CP2K_ROOT polaris-build/build-cp2k-polaris.sh
+qsub -v LAMMPS_ROOT,LAMMPS_VENV polaris-build/build-lammps-polaris.sh
+```
+
+These are independent one-node, one-hour `debug` jobs using allocation `ChemGraph`.
+Use `qsub -A YOUR_ALLOCATION` when needed; choose an appropriate queue and walltime
+if a fresh dependency build takes longer. Both jobs download packages, so they
+need network access to the upstream dependency/package repositories. Do not
+start MOFA until both jobs finish successfully. Their merged PBS logs are
+`cp2k-build.o<jobid>` and `lammps-build.o<jobid>` in the submission directory.
+
+| Build variable | Default / requirement |
+| --- | --- |
+| `CP2K_ROOT`, `LAMMPS_ROOT` | Explicit absolute paths to external source checkouts; the build scripts do not select the owner's runtime defaults. Paths inside MOFA are rejected. |
+| `LAMMPS_VENV` | `$LAMMPS_ROOT/.venv`; must also be outside MOFA. Pass the same path to runtime jobs if overridden. |
+| `MOFA_CONDA_MODULE` | `conda`; used to create LAMMPS's separate Python installation. |
+| `CP2K_BUILD_JOBS` | `8` compilation processes. |
+| `LAMMPS_BUILD_JOBS` | `32` compilation processes. |
+| `CP2K_CLEAN_TOOLCHAIN` | `0` reuses previously built dependencies; `1` moves them aside and rebuilds them. Use `1` after a compiler or CUDA change. |
+
+Forward optional settings with `qsub -v`, for example
+`qsub -v CP2K_ROOT,CP2K_BUILD_JOBS=16,CP2K_CLEAN_TOOLCHAIN=1 polaris-build/build-cp2k-polaris.sh`.
+`bash polaris-build/build-cp2k-polaris.sh --help` and the corresponding LAMMPS
+command work without an allocation or loading modules.
+
+LAMMPS creates a Conda-forge Python 3.12.13 installation in `$LAMMPS_ROOT/.python`,
+then a dedicated venv at `$LAMMPS_VENV`. It installs the recorded direct package
+versions in [lammps-requirements.txt](lammps-requirements.txt), including Torch
+2.5.0, MACE 0.3.13, CuEquivariance, and CuPy. These Python packages use CUDA 12
+wheels; LAMMPS itself compiles with the CUDA 13 toolkit. Keep `.python`, the venv,
+and the build tree in place together: Python/library paths are embedded in the
+build. The script refuses existing Python environments and build directories;
+use a fresh external checkout after a failed partial installation. It records
+the resolved packages, modules, and source revision in `mofa-lammps-*.txt`.
+
+CP2K builds serial/OpenMP and MPI executables under both `exe/local/` and
+`exe/local_cuda/`, including the ASE shell binaries. It preserves old CP2K
+object, library, and executable directories with a `.prev-<timestamp>-<jobid>`
+suffix. With `CP2K_CLEAN_TOOLCHAIN=1`, it also preserves the previous toolchain
+build/install trees. Rebuilding changes the selected installation, so use a new
+checkout if existing jobs still depend on it. Toolchain output is recorded in
+`$CP2K_ROOT/tools/toolchain/install.log`; modules and source revision are saved
+in `mofa-cp2k-*.txt`.
+
+The scripts verify executable/package availability and, for CP2K, runtime
+linkage. The recipes were updated from the installed build settings; a fresh
+full compilation has not been rerun as part of this repository update. Complete
+model preparation, preflight, and the smoke workflow below before scaling.
+Continue to pass your selected `CP2K_ROOT`, `CP2K_DATA_DIR`, `LAMMPS_ROOT`, and
+`LAMMPS_VENV` with `qsub -v` when submitting MOFA; build-job overrides do not
+change the repository's runtime defaults.
 
 ### Executables and runtime modules
 
 The LAMMPS wrapper activates `$LAMMPS_VENV/bin/activate` and executes
-`$LAMMPS_ROOT/build-mliap-no-mpi/lmp`. Despite the directory name, the supplied
-build enables MPI. Its Python packages and shared libraries must match the build.
+`$LAMMPS_ROOT/build-mliap-no-mpi/lmp`. The build disables LAMMPS MPI support;
+each MOFA worker launches a separate process. Its Python packages and shared
+libraries must match the build.
 
 The CP2K wrapper executes `$CP2K_ROOT/exe/local_cuda/$CP2K_BINARY`.
 The launch configuration supplies `CP2K_BINARY`; it is not a workflow tuning knob:
@@ -64,8 +159,8 @@ Both wrappers load the external builds' runtime modules in child processes:
 `cudatoolkit-standalone/13.0.1`. The installed Cray MPI GPU transport library
 requires `libcudart.so.13`. This replaces the older repository-local runtime
 module stack. Changing binary paths does not change these modules; another
-installation must be compatible with them. Legacy build scripts are reference
-material, not recipes for rebuilding these external installations.
+installation must be compatible with them. The installation scripts above source
+this same module configuration from `bin/polaris-simulation-env.sh`.
 
 ## 2. Prepare the models
 

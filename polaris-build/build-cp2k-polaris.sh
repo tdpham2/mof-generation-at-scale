@@ -7,24 +7,48 @@
 #PBS -A ChemGraph
 #PBS -j oe
 
-# Submit with:
-#   qsub /lus/eagle/projects/ChemGraph/thang/soft/cp2k-2025.1/build-cp2k.sh
+# Submit from the MOFA repository root; see instruction.md for source checkout.
 set -euo pipefail
-
+case "${1:-}" in
+    -h|--help)
+        cat <<'HELP'
+Build the patched external CP2K 2025.2 checkout for Polaris A100 GPUs.
+From the MOFA repository root:
+  qsub -v CP2K_ROOT=/absolute/path/to/cp2k polaris-build/build-cp2k-polaris.sh
+Required: CP2K_ROOT, a separate checkout at the revision in instruction.md.
+Optional: CP2K_BUILD_JOBS (8), CP2K_CLEAN_TOOLCHAIN (0; set 1 to rebuild dependencies).
+Existing CP2K outputs are moved to timestamped backups. Sources are not cloned.
+HELP
+        exit 0 ;;
+    '') ;;
+    *) echo "Unknown argument: $1; use --help." >&2; exit 2 ;;
+esac
 if [[ -z "${PBS_JOBID:-}" ]]; then
-    echo "Submit this script with qsub; it must run inside a Polaris PBS job."
+    echo "Run this script inside a Polaris PBS compute-node job." >&2
     exit 2
 fi
-
-cp2k_root="/lus/eagle/projects/ChemGraph/thang/soft/cp2k-2025.1"
-build_jobs=8
-
-if [[ ! -f "${cp2k_root}/CMakeLists.txt" ]]; then
-    echo "Missing CP2K source at ${cp2k_root}."
+repo_root=$(cd -- "${PBS_O_WORKDIR:-$(dirname -- "${BASH_SOURCE[0]}")/..}" && pwd -P)
+if [[ ! -f "${repo_root}/bin/polaris-simulation-env.sh" ]]; then
+    echo "Submit from the MOFA repository root (PBS_O_WORKDIR)." >&2
     exit 2
 fi
-if ! grep -q 'VERSION "2025.1"' "${cp2k_root}/CMakeLists.txt"; then
-    echo "The source at ${cp2k_root} is not CP2K 2025.1."
+if [[ "${CP2K_ROOT:-}" != /* ]]; then
+    echo "Set CP2K_ROOT to an absolute external source-checkout path." >&2
+    exit 2
+fi
+cp2k_root=$(realpath -e -- "${CP2K_ROOT}")
+case "${cp2k_root}/" in
+    "${repo_root}/"*) echo "CP2K_ROOT must be outside the MOFA checkout." >&2; exit 2 ;;
+esac
+expected_revision=34658f03b9867a3335ace1b4af7b7736c33523bb
+if [[ ! -f "${cp2k_root}/CMakeLists.txt" ||
+      "$(git -C "${cp2k_root}" rev-parse HEAD)" != "${expected_revision}" ]]; then
+    echo "Expected patched CP2K revision ${expected_revision}; see polaris-build/instruction.md." >&2
+    exit 2
+fi
+build_jobs="${CP2K_BUILD_JOBS:-8}"
+if [[ ! "${build_jobs}" =~ ^[1-9][0-9]*$ || ! "${CP2K_CLEAN_TOOLCHAIN:-0}" =~ ^[01]$ ]]; then
+    echo "CP2K_BUILD_JOBS must be positive; CP2K_CLEAN_TOOLCHAIN must be 0 or 1." >&2
     exit 2
 fi
 
@@ -41,37 +65,12 @@ echo "PBS job: ${PBS_JOBID}"
 echo "CP2K source: ${cp2k_root}"
 
 echo "========== Configuring Polaris modules =========="
-module reset
-module use /soft/modulefiles
-
-if module -t list 2>&1 | grep -q '^PrgEnv-nvidia/'; then
-    module swap PrgEnv-nvidia PrgEnv-gnu
-elif ! module -t list 2>&1 | grep -q '^PrgEnv-gnu/'; then
-    module load PrgEnv-gnu
-fi
-
-if module -t list 2>&1 | grep -q '^gcc-native/14'; then
-    module swap gcc-native/14 gcc-native/12.3
-else
-    module load gcc-native/12.3
-fi
-
-module unload cray-libsci 2>/dev/null || true
-module unload cray-fftw 2>/dev/null || true
-module load cray-libsci
-module load cray-fftw
-
-# The CPE accelerator module provides the A100 target and CUDA-aware Cray MPI
-# linkage, but it does not recognize the site standalone CUDA module. Satisfy
-# its prerequisite with CPE CUDA 11.8, retain the accelerator target, and then
-# select CUDA 12.8.1 for the actual toolchain and runtime libraries.
-module load cuda/11.8
-module load craype-accel-nvidia80
-module unload cuda/11.8
-module load cudatoolkit-standalone/12.8.1
-
-export CUDA_PATH="${CUDA_HOME}"
-export MPICH_GPU_SUPPORT_ENABLED=1
+# Build and runtime wrappers deliberately share the compiler/CUDA module stack.
+source "${repo_root}/bin/polaris-simulation-env.sh"
+export PYTHONNOUSERSITE=1
+export OMP_NUM_THREADS=2
+export LIBRARY_PATH="${CUDA_HOME}/lib64:${LIBRARY_PATH:-}"
+export LDFLAGS="-L${CUDA_HOME}/lib64 -lcudart ${LDFLAGS:-}"
 
 module list
 
@@ -85,8 +84,10 @@ CC --version | head -n 1
 ftn --version | head -n 1
 nvcc --version | tail -n 1
 
-if ! nvcc --version | grep -q 'release 12\.8'; then
-    echo "ERROR: CP2K must be built with CUDA 12.8.x on Polaris."
+if ! nvcc --version | grep -q 'release 13\.0'; then
+    echo "ERROR: CP2K must be built with CUDA 13.0.x on Polaris"
+    echo "       (cray-mpich 9.1.0 GTL requires libcudart.so.13)."
+    nvcc --version
     exit 1
 fi
 if [[ "${CRAY_ACCEL_TARGET:-}" != "nvidia80" ]]; then
@@ -100,8 +101,65 @@ if ! cc --cray-print-opts=libs | grep -q -- '-lmpi_gtl_cuda'; then
     exit 1
 fi
 
+# Preflight: actually link and compile something before spending ~25 minutes on
+# dependencies. The version checks above only compare strings; these catch the
+# real failure mode, which is a module set that looks right but cannot link.
+#
+# This exists because ALCF can change a module default out from under the
+# script. When cudatoolkit-standalone defaulted to 12.2.2, every link in the
+# toolchain failed (cray-mpich's libmpi_gtl_cuda needs libcudart.so.13) and the
+# first symptom was 28 undefined symbols inside OpenBLAS's getarch probe,
+# twelve minutes in and three layers from the cause.
+echo
+echo "========== Preflight: toolchain sanity =========="
+preflight_dir=$(mktemp -d)
+trap 'rm -rf "${preflight_dir}"' EXIT
+
+# 1. Can we link at all? craype-accel-nvidia80 injects -lmpi_gtl_cuda into
+#    every link line, so this fails if the CUDA runtime does not match.
+echo 'int main(void) { return 0; }' > "${preflight_dir}/link.c"
+if ! cc "${preflight_dir}/link.c" -o "${preflight_dir}/link.out" \
+        > "${preflight_dir}/link.log" 2>&1; then
+    echo "ERROR: Preflight link failed. The loaded CUDA runtime is probably"
+    echo "       incompatible with the cray-mpich CUDA GTL."
+    echo "       CUDA_HOME=${CUDA_HOME}"
+    echo "       libmpi_gtl_cuda requires:"
+    objdump -p "$(cc --cray-print-opts=libs | tr ' ' '\n' |
+        sed -n 's/^-L//p' | while read -r d; do
+            [[ -e "${d}/libmpi_gtl_cuda.so" ]] && echo "${d}/libmpi_gtl_cuda.so" && break
+        done)" 2>/dev/null | grep 'NEEDED.*cudart' || true
+    echo "       CUDA_HOME provides:"
+    ls "${CUDA_HOME}"/lib64/libcudart.so.* 2>/dev/null || true
+    echo "--- link output ---"
+    cat "${preflight_dir}/link.log"
+    exit 1
+fi
+
+# 2. Can nvcc parse the loaded gcc's headers, and emit code for this GPU?
+#    CUDA 12.2 chokes on gcc-native/14 headers (_Float128, 0.0bf16), and CUDA
+#    13 dropped the Pascal arch that some dependencies still default to.
+cat > "${preflight_dir}/probe.cu" << 'PREFLIGHT_EOF'
+#include <math.h>
+__global__ void probe_kernel(void) {}
+int main(void) { return 0; }
+PREFLIGHT_EOF
+if ! nvcc -arch=sm_80 -std=c++14 -allow-unsupported-compiler \
+        -c "${preflight_dir}/probe.cu" -o "${preflight_dir}/probe.o" \
+        > "${preflight_dir}/nvcc.log" 2>&1; then
+    echo "ERROR: Preflight nvcc compile failed for sm_80."
+    echo "       nvcc: $(nvcc --version | tail -n 2 | head -n 1)"
+    echo "       gcc:  $(cc --version | head -n 1)"
+    echo "--- nvcc output ---"
+    cat "${preflight_dir}/nvcc.log"
+    exit 1
+fi
+
+rm -rf "${preflight_dir}"
+trap - EXIT
+echo "Preflight OK: link succeeds and nvcc emits sm_80."
+
 # COSMA and COSTA require the LibSci installation prefix. Derive the active
-# GNU/GCC 12.3 path from the Cray compiler wrapper instead of hard-coding it.
+# GNU/GCC 14 path from the Cray compiler wrapper instead of hard-coding it.
 libsci_libdir=$(
     cc --cray-print-opts=libs |
         tr ' ' '\n' |
@@ -127,17 +185,32 @@ echo "CRAY_LIBSCI_PREFIX_DIR=${CRAY_LIBSCI_PREFIX_DIR}"
 
 echo
 echo "========== Preserving previous build =========="
-backup_tag="pre-cuda128-$(date -u +%Y%m%dT%H%M%SZ)"
-for old_path in \
-    tools/toolchain/install \
-    tools/toolchain/build \
-    obj/local \
-    lib/local \
-    exe/local \
-    obj/local_cuda \
-    lib/local_cuda \
+# By default only the CP2K object/exe trees are moved aside. The toolchain
+# build and install trees are left in place so install_cp2k_toolchain.sh can
+# reuse the per-package install_successful lock files and skip dependencies it
+# already built: a full rebuild is ~25 minutes (libxc alone is ~12) and several
+# GB, which is a steep price for re-running after a failure in a late stage.
+#
+# Set CP2K_CLEAN_TOOLCHAIN=1 to force a from-scratch dependency rebuild. Do
+# that whenever the compiler or CUDA version changes, since the lock files do
+# not track the toolchain environment and stale objects would be reused.
+backup_tag="prev-$(date -u +%Y%m%dT%H%M%SZ)-${PBS_JOBID}"
+backup_paths=(
+    obj/local
+    lib/local
+    exe/local
+    obj/local_cuda
+    lib/local_cuda
     exe/local_cuda
-do
+)
+if [[ "${CP2K_CLEAN_TOOLCHAIN:-0}" == "1" ]]; then
+    echo "CP2K_CLEAN_TOOLCHAIN=1: dependencies will be rebuilt from scratch."
+    backup_paths+=(tools/toolchain/install tools/toolchain/build)
+else
+    echo "Reusing existing toolchain dependencies where possible."
+    echo "Set CP2K_CLEAN_TOOLCHAIN=1 to force a full dependency rebuild."
+fi
+for old_path in "${backup_paths[@]}"; do
     if [[ -e "${old_path}" ]]; then
         echo "Moving ${old_path} to ${old_path}.${backup_tag}"
         mv "${old_path}" "${old_path}.${backup_tag}"
@@ -152,12 +225,15 @@ echo
 echo "========== Installing CP2K dependencies =========="
 cd tools/toolchain
 ./install_cp2k_toolchain.sh \
-    --gpu-ver=A100 \
+    --enable-cray=yes \
     --enable-cuda \
+    --math-mode=cray \
+    --gpu-ver=A100 \
     --target-cpu=znver3 \
     --mpi-mode=mpich \
     --with-elpa=install \
     --with-sirius=no \
+    --with-openblas=no \
     -j "${build_jobs}" 2>&1 | tee install.log
 
 cp install/arch/* ../../arch/
@@ -173,7 +249,7 @@ source ./tools/toolchain/install/setup
 set -u
 export MPICH_GPU_SUPPORT_ENABLED=1
 
-if ! nvcc --version | grep -q 'release 12\.8'; then
+if ! nvcc --version | grep -q 'release 13\.0'; then
     echo "ERROR: The generated toolchain changed the active CUDA version."
     nvcc --version
     exit 1
@@ -207,12 +283,12 @@ echo
 echo "========== Verifying CUDA runtime and MPI GTL =========="
 for exe in exe/local_cuda/cp2k.psmp exe/local_cuda/cp2k_shell.psmp; do
     dynamic_section=$(readelf -d "${exe}")
-    if [[ "${dynamic_section}" != *"cuda-12.8.1"* ]]; then
-        echo "ERROR: ${exe} does not contain the CUDA 12.8.1 runpath."
+    if [[ "${dynamic_section}" != *"cuda-13.0.1"* ]]; then
+        echo "ERROR: ${exe} does not contain the CUDA 13.0.1 runpath."
         exit 1
     fi
-    if [[ "${dynamic_section}" == *"cuda-12.9"* ]]; then
-        echo "ERROR: ${exe} still contains a CUDA 12.9 runpath."
+    if [[ "${dynamic_section}" == *"cuda-12."* ]]; then
+        echo "ERROR: ${exe} still contains a CUDA 12.x runpath."
         exit 1
     fi
 
@@ -226,8 +302,8 @@ for exe in exe/local_cuda/cp2k.psmp exe/local_cuda/cp2k_shell.psmp; do
         echo "ERROR: ${exe} is not linked to the Cray MPI CUDA GTL."
         exit 1
     fi
-    if ! grep 'libnvrtc' <<<"${ldd_output}" | grep -q 'cuda-12.8.1'; then
-        echo "ERROR: ${exe} does not resolve NVRTC from CUDA 12.8.1."
+    if ! grep 'libnvrtc' <<<"${ldd_output}" | grep -q 'cuda-13.0.1'; then
+        echo "ERROR: ${exe} does not resolve NVRTC from CUDA 13.0.1."
         echo "${ldd_output}" | grep -E 'cuda|nvrtc|gtl' || true
         exit 1
     fi
@@ -256,5 +332,8 @@ for exe in exe/local_cuda/cp2k.psmp exe/local_cuda/cp2k_shell.psmp; do
 done
 
 echo
-echo "CP2K installation completed successfully."
+git -C "${cp2k_root}" rev-parse HEAD > "${cp2k_root}/mofa-cp2k-revision.txt"
+module -t list > "${cp2k_root}/mofa-cp2k-modules.txt" 2>&1
+echo "CP2K installed: ${cp2k_root}/exe/local_cuda"
+echo "Use CP2K_ROOT=${cp2k_root} and CP2K_DATA_DIR=${cp2k_root}/data for MOFA."
 echo "Previous build suffix: ${backup_tag}"

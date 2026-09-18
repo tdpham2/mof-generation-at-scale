@@ -15,8 +15,11 @@ Install the environment file appropriate for your system with a command similar 
 conda env create --file envs/environment-cpu.yml --force
 ```
 
-For MOFA on Polaris with existing external CP2K and LAMMPS installations, follow
-the [Polaris setup guide](polaris-build/instruction.md#1-configure-external-installations).
+For MOFA on Polaris, follow the
+[Polaris setup guide](polaris-build/instruction.md#1-configure-external-installations).
+CP2K and LAMMPS live in separate external checkouts; MOFA calls their binaries.
+The guide includes [installation scripts and source revisions](polaris-build/instruction.md#build-separate-installations)
+for building them outside this repository, as well as configuration for existing installations.
 
 If solving is slow try updating to the newest version of conda and using the `libmamba` solver:
 
