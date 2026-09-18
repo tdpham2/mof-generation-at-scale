@@ -1,0 +1,428 @@
+{
+  "source_run": "run/parallel-polaris-repo-12Aug26192114-84ec2c",
+  "method": "run_optimization",
+  "submitted": 15,
+  "returned_successful": 14,
+  "returned_failed": 0,
+  "no_return_at_log_end": [
+    "mof-3ecba3bc"
+  ],
+  "orbital_range": [
+    197,
+    270
+  ],
+  "tasks_all_three_scf_converged": 3,
+  "scf_converged": 10,
+  "scf_not_converged": 32,
+  "parsing_note": "Each per-MOF cp2k.out is a cumulative snapshot of one reused shell. Only its last force-environment section belongs to that MOF; older sections are not counted again.",
+  "source_comparison": [
+    {
+      "old_path": "/lus/eagle/projects/ChemGraph/thang/mof-generation-at-scale/deps/cp2k-2025.1/tools/toolchain/build/elpa-2024.05.001/src/GPU/CUDA/cuUtils_template.cu",
+      "new_path": "/lus/eagle/projects/ChemGraph/thang/soft/cp2k/tools/toolchain/build/elpa-2024.05.001/src/GPU/CUDA/cuUtils_template.cu",
+      "old_sha256": "b59ace17d7b85edb99aa1b4c7e2307d859fb1d2bc229b6fb0858355100ab6470",
+      "new_sha256": "b59ace17d7b85edb99aa1b4c7e2307d859fb1d2bc229b6fb0858355100ab6470",
+      "identical": true
+    },
+    {
+      "old_path": "/lus/eagle/projects/ChemGraph/thang/mof-generation-at-scale/deps/cp2k-2025.1/tools/toolchain/build/elpa-2024.05.001/src/elpa2/elpa2_trans_ev_tridi_to_band_template.F90",
+      "new_path": "/lus/eagle/projects/ChemGraph/thang/soft/cp2k/tools/toolchain/build/elpa-2024.05.001/src/elpa2/elpa2_trans_ev_tridi_to_band_template.F90",
+      "old_sha256": "fbeb3ccb97fa96f405dc3772f28edebd415806f6e021986d9ea170944f8c6fd1",
+      "new_sha256": "fbeb3ccb97fa96f405dc3772f28edebd415806f6e021986d9ea170944f8c6fd1",
+      "identical": true
+    }
+  ],
+  "records": [
+    {
+      "mof": "mof-d2f542fd",
+      "task_id": "4696f309-bfd6-4ab5-84f8-7c5e9bb6ba49",
+      "workflow_success": true,
+      "result_line": 164,
+      "output": "run/parallel-polaris-repo-12Aug26192114-84ec2c/dft-runs/mof-d2f542fd-optimize-default/cp2k.out",
+      "output_sha256": "2853c875c09b3901621b1cc124dab32ab8ac8c1ed5a5af5781abebc92cc63c61",
+      "last_force_environment_line": 12,
+      "requested_orbitals": 222,
+      "basis_functions": 1336,
+      "scf_evaluations": [
+        {
+          "converged": true,
+          "steps": 39,
+          "line": 172
+        },
+        {
+          "converged": true,
+          "steps": 15,
+          "line": 241
+        },
+        {
+          "converged": true,
+          "steps": 20,
+          "line": 315
+        }
+      ]
+    },
+    {
+      "mof": "mof-3495dd6e",
+      "task_id": "444ee162-5591-494c-b5d1-d1cc8d482d71",
+      "workflow_success": true,
+      "result_line": 166,
+      "output": "run/parallel-polaris-repo-12Aug26192114-84ec2c/dft-runs/mof-3495dd6e-optimize-default/cp2k.out",
+      "output_sha256": "192ddb3aa7beacab33662bf179a21fc9f9d248239114d9a4bfe517d4cae1ed54",
+      "last_force_environment_line": 557,
+      "requested_orbitals": 235,
+      "basis_functions": 1479,
+      "scf_evaluations": [
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 823
+        },
+        {
+          "converged": true,
+          "steps": 71,
+          "line": 934
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 1133
+        }
+      ]
+    },
+    {
+      "mof": "mof-93ec9f42",
+      "task_id": "61db0cbd-a134-4b27-9520-45572963265f",
+      "workflow_success": true,
+      "result_line": 329,
+      "output": "run/parallel-polaris-repo-12Aug26192114-84ec2c/dft-runs/mof-93ec9f42-optimize-default/cp2k.out",
+      "output_sha256": "71beec2291b56e7a7782c0ef3f385c436476d0635b1a2f83b98957fec016ec6a",
+      "last_force_environment_line": 1351,
+      "requested_orbitals": 226,
+      "basis_functions": 1382,
+      "scf_evaluations": [
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 1617
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 1802
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 1987
+        }
+      ]
+    },
+    {
+      "mof": "mof-aed4104a",
+      "task_id": "9571d9e6-3e35-4a15-9da5-d31491cd4630",
+      "workflow_success": true,
+      "result_line": 349,
+      "output": "run/parallel-polaris-repo-12Aug26192114-84ec2c/dft-runs/mof-aed4104a-optimize-default/cp2k.out",
+      "output_sha256": "8c481209103262cde0dad3dea86c546b8e6727019e37de75da924b684aa051b6",
+      "last_force_environment_line": 2204,
+      "requested_orbitals": 197,
+      "basis_functions": 1237,
+      "scf_evaluations": [
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 2470
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 2655
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 2840
+        }
+      ]
+    },
+    {
+      "mof": "mof-12655ee0",
+      "task_id": "308ea2ee-5832-4076-9d55-2fda49bf6d03",
+      "workflow_success": true,
+      "result_line": 383,
+      "output": "run/parallel-polaris-repo-12Aug26192114-84ec2c/dft-runs/mof-12655ee0-optimize-default/cp2k.out",
+      "output_sha256": "310a47efaca0b974785ff9d7a4a20674d2260b095cbeac1d626554d2743e5fe5",
+      "last_force_environment_line": 3058,
+      "requested_orbitals": 205,
+      "basis_functions": 1275,
+      "scf_evaluations": [
+        {
+          "converged": true,
+          "steps": 41,
+          "line": 3220
+        },
+        {
+          "converged": true,
+          "steps": 20,
+          "line": 3294
+        },
+        {
+          "converged": true,
+          "steps": 18,
+          "line": 3366
+        }
+      ]
+    },
+    {
+      "mof": "mof-fdb02bfc",
+      "task_id": "465aa05f-7ae2-451c-b35f-838fcad03b83",
+      "workflow_success": true,
+      "result_line": 557,
+      "output": "run/parallel-polaris-repo-12Aug26192114-84ec2c/dft-runs/mof-fdb02bfc-optimize-default/cp2k.out",
+      "output_sha256": "52c08c78b1ca7a9adcfd2d6efacad49b809636f791ca1c98e466e806dc84b83a",
+      "last_force_environment_line": 3601,
+      "requested_orbitals": 261,
+      "basis_functions": 1651,
+      "scf_evaluations": [
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 3867
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 4052
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 4237
+        }
+      ]
+    },
+    {
+      "mof": "mof-96808ff1",
+      "task_id": "eb0fe71c-bedd-4f51-980b-a936a18e4547",
+      "workflow_success": true,
+      "result_line": 732,
+      "output": "run/parallel-polaris-repo-12Aug26192114-84ec2c/dft-runs/mof-96808ff1-optimize-default/cp2k.out",
+      "output_sha256": "83123b960420ff2f0fa9f91c96430664830271866d2c5ae44d4fe948babc0cfd",
+      "last_force_environment_line": 4455,
+      "requested_orbitals": 220,
+      "basis_functions": 1305,
+      "scf_evaluations": [
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 4721
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 4906
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 5091
+        }
+      ]
+    },
+    {
+      "mof": "mof-bd49998f",
+      "task_id": "a19d7029-c9e5-4e8f-a875-b04d094ea6d2",
+      "workflow_success": true,
+      "result_line": 753,
+      "output": "run/parallel-polaris-repo-12Aug26192114-84ec2c/dft-runs/mof-bd49998f-optimize-default/cp2k.out",
+      "output_sha256": "a981842a49fef6cd294593e616f8e7d1c081bdb24dd4060f71863b4651ea18ed",
+      "last_force_environment_line": 5309,
+      "requested_orbitals": 197,
+      "basis_functions": 1229,
+      "scf_evaluations": [
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 5575
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 5760
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 5945
+        }
+      ]
+    },
+    {
+      "mof": "mof-2dce69de",
+      "task_id": "7351b142-ada7-4b0f-89a7-cf300142dc24",
+      "workflow_success": true,
+      "result_line": 884,
+      "output": "run/parallel-polaris-repo-12Aug26192114-84ec2c/dft-runs/mof-2dce69de-optimize-default/cp2k.out",
+      "output_sha256": "26a278d22fd115b365a6827cafc062387dc632853496d9feee84c9556afbccfc",
+      "last_force_environment_line": 6160,
+      "requested_orbitals": 221,
+      "basis_functions": 1366,
+      "scf_evaluations": [
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 6426
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 6611
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 6796
+        }
+      ]
+    },
+    {
+      "mof": "mof-7dc02b17",
+      "task_id": "bc87a126-51df-4997-91fe-3717481a5828",
+      "workflow_success": true,
+      "result_line": 912,
+      "output": "run/parallel-polaris-repo-12Aug26192114-84ec2c/dft-runs/mof-7dc02b17-optimize-default/cp2k.out",
+      "output_sha256": "faba21e42942bf2f601dc07aee4f1ffd1cd601280c7a83399fb58e2193d87775",
+      "last_force_environment_line": 7013,
+      "requested_orbitals": 225,
+      "basis_functions": 1346,
+      "scf_evaluations": [
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 7279
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 7464
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 7649
+        }
+      ]
+    },
+    {
+      "mof": "mof-e3f280dc",
+      "task_id": "31946ac7-2b5f-4c49-a79a-7a75d5015ae6",
+      "workflow_success": true,
+      "result_line": 1070,
+      "output": "run/parallel-polaris-repo-12Aug26192114-84ec2c/dft-runs/mof-e3f280dc-optimize-default/cp2k.out",
+      "output_sha256": "2f3b72ba1fdf722b09486309323ab524599d5afab3ccc3fd4d36ce0a6c242e12",
+      "last_force_environment_line": 7864,
+      "requested_orbitals": 202,
+      "basis_functions": 1229,
+      "scf_evaluations": [
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 8130
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 8315
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 8500
+        }
+      ]
+    },
+    {
+      "mof": "mof-8a765d3b",
+      "task_id": "0429019c-6729-40b3-bc52-435520197a86",
+      "workflow_success": true,
+      "result_line": 1100,
+      "output": "run/parallel-polaris-repo-12Aug26192114-84ec2c/dft-runs/mof-8a765d3b-optimize-default/cp2k.out",
+      "output_sha256": "e6a12fb99ff6c018d4aa939ca619288b29fd67156b5a10c751740ddbb734973b",
+      "last_force_environment_line": 8717,
+      "requested_orbitals": 270,
+      "basis_functions": 1615,
+      "scf_evaluations": [
+        {
+          "converged": true,
+          "steps": 89,
+          "line": 8927
+        },
+        {
+          "converged": true,
+          "steps": 36,
+          "line": 9017
+        },
+        {
+          "converged": true,
+          "steps": 33,
+          "line": 9104
+        }
+      ]
+    },
+    {
+      "mof": "mof-bef24fce",
+      "task_id": "1467f60b-4027-4647-83c6-91667df8c17d",
+      "workflow_success": true,
+      "result_line": 1109,
+      "output": "run/parallel-polaris-repo-12Aug26192114-84ec2c/dft-runs/mof-bef24fce-optimize-default/cp2k.out",
+      "output_sha256": "d73168ee3f17e1e3e8d028c4ac646fa7189644eea1307cb31fb880b714eee52a",
+      "last_force_environment_line": 9334,
+      "requested_orbitals": 251,
+      "basis_functions": 1435,
+      "scf_evaluations": [
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 9600
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 9785
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 9970
+        }
+      ]
+    },
+    {
+      "mof": "mof-7b40d0a4",
+      "task_id": "393e5b9b-4a25-46f9-be72-2425d75172be",
+      "workflow_success": true,
+      "result_line": 1268,
+      "output": "run/parallel-polaris-repo-12Aug26192114-84ec2c/dft-runs/mof-7b40d0a4-optimize-default/cp2k.out",
+      "output_sha256": "2707028a6bb2fabb816e367cced950c8d054aef7b26ada780d9989bf7f2a6289",
+      "last_force_environment_line": 10185,
+      "requested_orbitals": 244,
+      "basis_functions": 1483,
+      "scf_evaluations": [
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 10451
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 10636
+        },
+        {
+          "converged": false,
+          "steps": 128,
+          "line": 10821
+        }
+      ]
+    }
+  ]
+}

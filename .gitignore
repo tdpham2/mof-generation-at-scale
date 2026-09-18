@@ -170,6 +170,7 @@ run
 # Repository-local environments, dependency builds, and runtime artifacts
 *.swp
 /mofa_env/
+/mofa_env_py312/
 /deps/
 /.runtime-cache/
 /test_installation/
@@ -180,6 +181,12 @@ run
 
 # Local PBS job artifacts
 /mofa-test.*
+/mofa-smoke.*
+/mofa-external-check.*
+/cp2k-diagnostic.[oe]*
+/cp2k-elpa-replay.[oe]*
+/cp2k-block32.[oe]*
+/lammps-diagnostic.[oe]*
 # CP2K standalone-test run outputs (large .cube files, per-job run dirs)
 cp2k-test/run-*/
 *.cube
