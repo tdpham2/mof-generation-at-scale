@@ -169,11 +169,8 @@ On compute nodes, `--gpu` also performs a Torch CUDA calculation; both job
 scripts run `--gpu --external` before starting services. Do not run GPU CP2K
 on a login node, even with `--version`.
 
-Standalone diagnostics use separate allocations. See the
-[CP2K diagnostic instructions](../cp2k-test/README.md) for executable/ASE-shell
-checks and ELPA replay, and the [LAMMPS/MPS diagnostic instructions](../lammps-test/README.md)
-for GPU concurrency checks. Their recorded results concern specific inputs and
-nodes; they do not validate all generated MOFs or integrated Parsl scheduling.
+Preflight validates the runtime. Full workflow validation requires running the
+smoke simulation below and inspecting its results.
 
 ## 5. Run simulations
 
@@ -270,15 +267,9 @@ and task result JSON files. Inspect successful generation and MACE relaxation,
 completed MD trajectories, CP2K and ChargeMol results, and stored RASPA uptake
 before scaling. `MOFAThinker completed` alone is not proof of successful science.
 
-The external CP2K/ELPA build has a reproduced structure-dependent GPU solver
-crash. Block size 32 worked for the saved crash cases, but is applied only to
-standalone diagnostic inputs, **not production MOFA inputs**. One block-size
-32 case still failed SCF convergence, and `IGNORE_CONVERGENCE_FAILURE` can let
-CP2K return normally with unconverged SCF. The production workaround and stricter
-scientific acceptance remain follow-up work. See [ELPA replay](../cp2k-test/ELPA_REPLAY.md)
-and [block-size results](../cp2k-test/BLOCK32_RESULTS.md).
-
-Historical results documents summarize recorded runs; their raw job outputs are
-local evidence excluded from Git. Reproducing those diagnostics does not establish
-that every generated structure converges or that a collaborator can access the
-current private Python runtime.
+Local testing of the external CP2K/ELPA build reproduced a structure-dependent
+GPU solver crash. Block size 32 worked for the tested crash cases but has not
+been applied to production MOFA inputs. It did not resolve every SCF convergence
+failure. Because `IGNORE_CONVERGENCE_FAILURE` can let CP2K return normally with
+unconverged SCF, inspect convergence explicitly. The production workaround and
+stricter scientific acceptance remain follow-up work.
