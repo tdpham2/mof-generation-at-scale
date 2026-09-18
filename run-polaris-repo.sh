@@ -1,10 +1,10 @@
 #!/bin/bash -l
-#PBS -l select=10:system=polaris
-#PBS -l walltime=01:00:00
+#PBS -l select=16:system=polaris
+#PBS -l walltime=03:00:00
 #PBS -l filesystems=home:eagle
-#PBS -q debug-scaling
+#PBS -q prod
 #PBS -N mofa-test
-#PBS -A ChemGraph
+#PBS -A IQC
 
 set -euo pipefail
 

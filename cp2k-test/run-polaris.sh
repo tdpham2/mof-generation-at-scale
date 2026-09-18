@@ -10,8 +10,8 @@ fi
 
 test_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 repo_root=$(cd "${test_dir}/.." && pwd -P)
-cp2k_exe="${repo_root}/deps/cp2k-2025.1/exe/local_cuda/cp2k.psmp"
-cp2k_data="${repo_root}/deps/cp2k-2025.1/data"
+source "${repo_root}/bin/polaris-paths.sh"
+cp2k_exe="${repo_root}/bin/run-cp2k-polaris.sh"
 affinity_script="${repo_root}/bin/set-affinity-gpu-polaris.sh"
 
 if [[ ! -x "${cp2k_exe}" ]]; then
@@ -23,34 +23,7 @@ if [[ ! -f "${test_dir}/cp2k.inp" ]]; then
     exit 2
 fi
 
-# Match the CP2K runtime environment in configs/polaris/polaris-repo.py.
-module reset
-module use /soft/modulefiles
-if module -t list 2>&1 | grep -q '^PrgEnv-nvidia/'; then
-    module swap PrgEnv-nvidia PrgEnv-gnu
-elif ! module -t list 2>&1 | grep -q '^PrgEnv-gnu/'; then
-    module load PrgEnv-gnu
-fi
-if module -t list 2>&1 | grep -q '^gcc-native/14'; then
-    module swap gcc-native/14 gcc-native/12.3
-else
-    module load gcc-native/12.3
-fi
-
-module unload cray-libsci 2>/dev/null || true
-module unload cray-fftw 2>/dev/null || true
-module load cray-libsci
-module load cray-fftw
-module load cuda/11.8
-module load craype-accel-nvidia80
-module unload cuda/11.8
-module load cudatoolkit-standalone/12.8.1
-
-export CUDA_PATH="${CUDA_HOME}"
-export MPICH_GPU_SUPPORT_ENABLED=1
-export CP2K_DATA_DIR="${cp2k_data}"
-export OPENBLAS_NUM_THREADS=1
-export GOTO_NUM_THREADS=1
+# Each rank loads the external build's matching modules through the wrapper.
 export OMP_NUM_THREADS=8
 
 run_dir="${test_dir}/run-${PBS_JOBID}"
@@ -67,7 +40,7 @@ echo "Run directory: ${run_dir}"
 
 env MPICH_OFI_CXI_PID_BASE=5 \
     mpiexec -n 4 --ppn 4 --cpu-bind depth --depth 8 \
-    -env OMP_NUM_THREADS=8 \
+    -env OMP_NUM_THREADS=8 -env CP2K_BINARY=cp2k.psmp \
     "${affinity_script}" "${cp2k_exe}" \
     -i cp2k.inp -o cp2k.out \
     > launcher.stdout 2> launcher.stderr

@@ -1,5 +1,7 @@
 """Single-node Polaris configuration for an end-to-end MOFA smoke test."""
 
+import os
+from shlex import quote
 from pathlib import Path
 
 from pydantic import computed_field
@@ -27,7 +29,7 @@ class Config(LocalConfig):
 
     raspa_version: RASPAVersion = "raspa2"
     raspa_cmd: tuple[str, ...] = (
-        str(ROOT / "mofa_env/bin/simulate"),
+        str(Path(os.environ.get("MOFA_ENV") or ROOT / "mofa_env_py312").resolve() / "bin/simulate"),
     )
 
     # LocalConfig otherwise permits DFT on the CPU helper executor as well.
@@ -37,9 +39,9 @@ class Config(LocalConfig):
     @computed_field
     @property
     def dft_cmd(self) -> str:
-        return str(
-            ROOT
-            / "deps/cp2k-2025.1/exe/local_cuda/cp2k_shell.ssmp"
+        return (
+            "env CP2K_BINARY=cp2k_shell.ssmp "
+            + quote(str(ROOT / "bin/run-cp2k-polaris.sh"))
         )
 
 

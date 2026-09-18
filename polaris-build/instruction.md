@@ -1,262 +1,376 @@
-# Installing and Running MOFA on Polaris
+# MOFA on Polaris with external LAMMPS and CP2K
 
-This guide creates a repository-local MOFA installation on Polaris. It reflects
-the setup currently proven to run the workflow end to end. CP2K is built under
-`deps/`, LAMMPS under `deps/test/`, and MOFA itself lives in a Conda environment
-at `./mofa_env`.
+Run setup and submission commands from the MOFA repository root on a Polaris
+login node. This guide covers the one-node `run-polaris-local-smoke.sh` and
+ten-node `run-polaris-repo-test.sh` workflows. MOFA, LAMMPS, and CP2K live in
+separate Git checkouts. This repository includes the Polaris installation
+scripts, but CP2K/LAMMPS sources, dependencies, Python environments, and compiled
+outputs belong in their external checkouts, outside MOFA and its `deps/` directory.
+MOFA calls their binaries through the wrappers in `bin/`.
 
-Run all commands from the MOFA repository root unless a step says otherwise.
+## 1. Configure external installations
 
-> **Two independent Python environments.** MOFA, Redis, MongoDB, RASPA2, MACE,
-> and the steering workflow use the Conda environment `./mofa_env` (Python 3.10).
-> LAMMPS is built and run against a **separate venv** inside its own build tree
-> (Python 3.12). This is deliberate — see [Executor
-> environments](#executor-environments). Do not try to run LAMMPS from
-> `mofa_env`.
+`bin/polaris-paths.sh` supplies the following defaults. Set any overrides
+**before** sourcing it or running the installer; use absolute paths visible
+from every compute node.
 
-## Prerequisites
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MOFA_ENV` | `<repository>/mofa_env_py312` | Interactive MOFA environment; workflow scripts explicitly select this default. |
+| `MOFA_CONDA_MODULE` | `conda` | Site Conda module used for installation and MOFA activation. |
+| `LAMMPS_ROOT` | `/lus/eagle/projects/ChemGraph/thang/soft/lammps` | External LAMMPS installation. |
+| `LAMMPS_VENV` | `$LAMMPS_ROOT/.venv` | Python environment belonging to that LAMMPS build. |
+| `CP2K_ROOT` | `/lus/eagle/projects/ChemGraph/thang/soft/cp2k` | External CP2K installation. |
+| `CP2K_DATA_DIR` | `$CP2K_ROOT/data` | CP2K basis, pseudopotential, and dispersion data. |
 
-You need:
-
-- A Polaris account and a project allocation.
-- A clone of this repository on a filesystem visible to the compute nodes
-  (Eagle or Flare).
-- Network access from the login node to fetch CP2K, LAMMPS, and the MACE model.
-
-The PBS run scripts set `#PBS -A ChemGraph`. Replace `ChemGraph` with your own
-Polaris allocation in these files before submitting:
-
-```text
-run-polaris-local-smoke.sh
-run-polaris-repo-test.sh
-```
-
-`build-cp2k.sh` runs inside an interactive PBS job (see below), so it has no
-`#PBS -A` line to edit. The LAMMPS build
-(`polaris-build/build-lammps-polaris.sh`) also runs interactively.
-
-## 1. Download the CP2K and LAMMPS sources
-
-Use the versions validated by this repository: **CP2K 2025.1** and **LAMMPS
-`stable_22Jul2025` (update5)**.
+For the existing installations, load the defaults:
 
 ```bash
-mkdir -p deps deps/test
-
-# CP2K 2025.1 -> deps/cp2k-2025.1
-git clone --branch v2025.1 --depth 1 \
-  https://github.com/cp2k/cp2k.git deps/cp2k-2025.1
-
-# LAMMPS 22Jul2025 update5 -> deps/test/lammps-22Jul2025
-git clone --branch stable_22Jul2025_update5 --depth 1 \
-  https://github.com/lammps/lammps.git deps/test/lammps-22Jul2025
+source bin/polaris-paths.sh
 ```
 
-The `deps/` directory holds large, machine-specific source and build trees and
-is intentionally ignored by Git.
+To use another matching installation, set its roots first. If `LAMMPS_VENV` or
+`CP2K_DATA_DIR` was already exported, update it too: changing a root does not
+replace an explicitly set dependent path. Submission examples appear below.
 
-## 2. Create the MOFA Conda environment
+### Collaborator access prerequisite
+
+The defaults describe the owner's current setup, not a generally accessible
+installation. As inspected on 2026-09-18, `$LAMMPS_VENV/bin/python` resolves
+under `/home/tdpham2/.local/share/uv/python/`, and LAMMPS's library search paths
+also reference that Python installation. `/home/tdpham2` has mode `700` with
+no collaborator ACL. Another account cannot use that interpreter just because
+the LAMMPS directory is on Eagle. Access to the ChemGraph project filesystem
+is also required.
+
+A collaborator needs an accessible Python runtime and matching LAMMPS build,
+then must set `LAMMPS_ROOT`/`LAMMPS_VENV` accordingly. The build recipe below creates
+Python inside the external LAMMPS checkout, avoiding a private-home interpreter.
+It does not change the existing installation or its permissions unless you
+explicitly select that checkout. Verify filesystem access from the collaborator's
+account before attempting validation or submitting jobs.
+
+### Build separate installations
+
+Skip this subsection if you already have accessible, compatible installations.
+The scripts shipped here are
+[build-cp2k-polaris.sh](build-cp2k-polaris.sh) and
+[build-lammps-polaris.sh](build-lammps-polaris.sh). They require pre-cloned sources
+at the revisions recorded from the September 2026 installations:
+
+| Software | Source revision | Build |
+| --- | --- | --- |
+| CP2K | [34658f03b9867a3335ace1b4af7b7736c33523bb](https://github.com/harikrishna1410/cp2k/commit/34658f03b9867a3335ace1b4af7b7736c33523bb), `polaris_build_sep_2026` branch of the CP2K fork | CP2K 2025.2 with Polaris/CUDA 13 patches, A100, ELPA, Cray MPI/LibSci. |
+| LAMMPS | [d51bbd4983a26e2da6f1550e1b41592690b02a90](https://github.com/lammps/lammps/commit/d51bbd4983a26e2da6f1550e1b41592690b02a90), upstream | Kokkos/CUDA, ML-IAP, EXTRA-MOLECULE, Python, and `BUILD_MPI=OFF`. |
+
+CP2K's fork supplies CUDA 13 compatibility changes for FFT, ELPA, and DBCSR;
+an unpatched 2025.2 checkout is not equivalent. Both scripts check the revision
+before building. These replace the old CP2K 2025.1/CUDA 12.8 and LAMMPS
+`stable_22Jul2025_update5` recipes.
+
+On a login node, choose a writable project directory visible from compute nodes
+and accessible to the intended users. Edit the first path below. Keep the MOFA
+checkout as your current directory:
 
 ```bash
-module reset
+export MOFA_SOFTWARE_ROOT=/lus/eagle/projects/ChemGraph/YOUR_DIRECTORY/soft
+export CP2K_ROOT="$MOFA_SOFTWARE_ROOT/cp2k"
+export LAMMPS_ROOT="$MOFA_SOFTWARE_ROOT/lammps"
+export CP2K_DATA_DIR="$CP2K_ROOT/data"
+export LAMMPS_VENV="$LAMMPS_ROOT/.venv"
+mkdir -p "$MOFA_SOFTWARE_ROOT"
+
+git clone --branch polaris_build_sep_2026 https://github.com/harikrishna1410/cp2k.git "$CP2K_ROOT"
+git -C "$CP2K_ROOT" checkout --detach 34658f03b9867a3335ace1b4af7b7736c33523bb
+git -C "$CP2K_ROOT" submodule update --init --recursive
+
+git clone --filter=blob:none --no-checkout https://github.com/lammps/lammps.git "$LAMMPS_ROOT"
+git -C "$LAMMPS_ROOT" checkout --detach d51bbd4983a26e2da6f1550e1b41592690b02a90
+git -C "$LAMMPS_ROOT" submodule update --init --recursive
+
+qsub -v CP2K_ROOT polaris-build/build-cp2k-polaris.sh
+qsub -v LAMMPS_ROOT,LAMMPS_VENV polaris-build/build-lammps-polaris.sh
+```
+
+These are independent one-node, one-hour `debug` jobs using allocation `ChemGraph`.
+Use `qsub -A YOUR_ALLOCATION` when needed; choose an appropriate queue and walltime
+if a fresh dependency build takes longer. Both jobs download packages, so they
+need network access to the upstream dependency/package repositories. Do not
+start MOFA until both jobs finish successfully. Their merged PBS logs are
+`cp2k-build.o<jobid>` and `lammps-build.o<jobid>` in the submission directory.
+
+| Build variable | Default / requirement |
+| --- | --- |
+| `CP2K_ROOT`, `LAMMPS_ROOT` | Explicit absolute paths to external source checkouts; the build scripts do not select the owner's runtime defaults. Paths inside MOFA are rejected. |
+| `LAMMPS_VENV` | `$LAMMPS_ROOT/.venv`; must also be outside MOFA. Pass the same path to runtime jobs if overridden. |
+| `MOFA_CONDA_MODULE` | `conda`; used to create LAMMPS's separate Python installation. |
+| `CP2K_BUILD_JOBS` | `8` compilation processes. |
+| `LAMMPS_BUILD_JOBS` | `32` compilation processes. |
+| `CP2K_CLEAN_TOOLCHAIN` | `0` reuses previously built dependencies; `1` moves them aside and rebuilds them. Use `1` after a compiler or CUDA change. |
+
+Forward optional settings with `qsub -v`, for example
+`qsub -v CP2K_ROOT,CP2K_BUILD_JOBS=16,CP2K_CLEAN_TOOLCHAIN=1 polaris-build/build-cp2k-polaris.sh`.
+`bash polaris-build/build-cp2k-polaris.sh --help` and the corresponding LAMMPS
+command work without an allocation or loading modules.
+
+LAMMPS creates a Conda-forge Python 3.12.13 installation in `$LAMMPS_ROOT/.python`,
+then a dedicated venv at `$LAMMPS_VENV`. It installs the recorded direct package
+versions in [lammps-requirements.txt](lammps-requirements.txt), including Torch
+2.5.0, MACE 0.3.13, CuEquivariance, and CuPy. These Python packages use CUDA 12
+wheels; LAMMPS itself compiles with the CUDA 13 toolkit. Keep `.python`, the venv,
+and the build tree in place together: Python/library paths are embedded in the
+build. The script refuses existing Python environments and build directories;
+use a fresh external checkout after a failed partial installation. It records
+the resolved packages, modules, and source revision in `mofa-lammps-*.txt`.
+
+CP2K builds serial/OpenMP and MPI executables under both `exe/local/` and
+`exe/local_cuda/`, including the ASE shell binaries. It preserves old CP2K
+object, library, and executable directories with a `.prev-<timestamp>-<jobid>`
+suffix. With `CP2K_CLEAN_TOOLCHAIN=1`, it also preserves the previous toolchain
+build/install trees. Rebuilding changes the selected installation, so use a new
+checkout if existing jobs still depend on it. Toolchain output is recorded in
+`$CP2K_ROOT/tools/toolchain/install.log`; modules and source revision are saved
+in `mofa-cp2k-*.txt`.
+
+The scripts verify executable/package availability and, for CP2K, runtime
+linkage. The recipes were updated from the installed build settings; a fresh
+full compilation has not been rerun as part of this repository update. Complete
+model preparation, preflight, and the smoke workflow below before scaling.
+Continue to pass your selected `CP2K_ROOT`, `CP2K_DATA_DIR`, `LAMMPS_ROOT`, and
+`LAMMPS_VENV` with `qsub -v` when submitting MOFA; build-job overrides do not
+change the repository's runtime defaults.
+
+### Executables and runtime modules
+
+The LAMMPS wrapper activates `$LAMMPS_VENV/bin/activate` and executes
+`$LAMMPS_ROOT/build-mliap-no-mpi/lmp`. The build disables LAMMPS MPI support;
+each MOFA worker launches a separate process. Its Python packages and shared
+libraries must match the build.
+
+The CP2K wrapper executes `$CP2K_ROOT/exe/local_cuda/$CP2K_BINARY`.
+The launch configuration supplies `CP2K_BINARY`; it is not a workflow tuning knob:
+
+- `cp2k_shell.ssmp`: local smoke test.
+- `cp2k_shell.psmp`: distributed MOFA tasks (wrapper default).
+- `cp2k.psmp`: standalone input-file tests.
+
+Both wrappers load the external builds' runtime modules in child processes:
+`PrgEnv-gnu`, `gcc-native/14`, Cray LibSci/FFTW, `craype-accel-nvidia80`, and
+`cudatoolkit-standalone/13.0.1`. The installed Cray MPI GPU transport library
+requires `libcudart.so.13`. This replaces the older repository-local runtime
+module stack. Changing binary paths does not change these modules; another
+installation must be compatible with them. The installation scripts above source
+this same module configuration from `bin/polaris-simulation-env.sh`.
+
+## 2. Prepare the models
+
+The installer validates models at the end, so prepare the ML-IAP model first.
+The DiffLinker checkpoint is supplied under `models/geom-300k/`; the generated
+MACE model is ignored by Git and must be prepared in each fresh checkout.
+Use the external LAMMPS environment for conversion, so the saved model matches
+its ML-IAP runtime. On the login node, with external paths configured:
+
+```bash
+(
+    set -euo pipefail
+    source bin/polaris-simulation-env.sh
+    source "$LAMMPS_VENV/bin/activate"
+    export PYTHONNOUSERSITE=1
+    cd input-files/mace
+    if [[ ! -f mace-mp0_medium ]]; then
+        wget https://github.com/ACEsuit/mace-mp/releases/download/mace_mp_0/2023-12-03-mace-128-L1_epoch-199.model \
+            -O mace-mp0_medium
+    fi
+    if [[ ! -f mace-mp0_medium-mliap_lammps.pt ]]; then
+        python create_lammps_model.py mace-mp0_medium --dtype float32 --format mliap
+    fi
+)
+```
+
+The converter needs the MACE/CuEquivariance packages already installed with
+LAMMPS. Do not install those build dependencies into MOFA or overwrite an
+existing validated model to follow this guide. The output used by both workflow
+scripts is `input-files/mace/mace-mp0_medium-mliap_lammps.pt`.
+The `create_mliap_model.py` converter called by `get-macemp-0a.sh` is the older
+no-CuEquivariance fallback; the command above is the external-runtime recipe.
+
+## 3. Create the MOFA environment
+
+```bash
 module use /soft/modulefiles
 module load conda
 conda activate base
-conda env create \
-  --file envs/environment-polaris.yml \
-  --prefix "$PWD/mofa_env"
-conda activate "$PWD/mofa_env"
+bash create_conda.sh --prefix "$PWD/mofa_env_py312"
 ```
 
-This installs MOFA, Redis, MongoDB, RASPA2, ChargeMol, MACE, and
-`cupy-cuda12x==13.6.0` (the Kokkos ML-IAP device bridge requires CuPy 13.x, which
-still supports `numpy<2`).
+The installer uses `MOFA_CONDA_MODULE` (default `conda`). It targets
+`<repository>/mofa_env_py312` independently of any inherited `MOFA_ENV`.
+`--prefix PATH` selects another installation target; relative paths are resolved
+from the calling directory. It refuses every existing target, including partial
+installations, and never updates or removes it. `bash create_conda.sh --help`
+does not load modules or install packages.
 
-Verify the key versions and commands:
+The stack pins Python 3.12.13, Torch 2.5.0+cu124, NumPy 1.26.4, Parsl 2026.7.27,
+MACE 0.3.13, Colmena 0.7.2, and redis-py 5.3.1. Python and Parsl match the recorded
+August run; the complete historical package set was not recovered. CPU checks
+and standalone simulations do not establish full workflow success.
+
+Conda supplies Redis server, MongoDB, ChargeMol, and RASPA2. Pip supplies
+`openbabel-wheel==3.1.1.23` as the only Open Babel binding. Do not also install
+Conda's `openbabel` or pip's `openbabel`. The CUDA 12.4 Torch wheel uses the
+PyTorch index with PyPI available for dependencies. MOFA is installed with
+`python -m pip install --no-deps -e .` after the manifest's dependencies.
+LAMMPS uses its own Python environment; no additional venv is needed inside MOFA.
+
+Before installation the script disables Python user-site packages, clears
+inherited Python paths, resets modules, and unloads XALT in the installer process.
+Temporary build files use `/tmp`. Logs are saved under
+`.runtime-cache/mofa-env-build.*.log`. The installed environment records
+`mofa-environment.yml`, `mofa-conda-explicit.txt`, `mofa-pip-freeze.txt`,
+`mofa-modules.txt`, and `mofa-build-log.txt` before validation.
+
+If package installation itself fails, inspect the log and use a new, unused
+`--prefix` for another attempt, retaining the failed environment for diagnosis.
+If installation completed and only validation failed (for example, an external
+path or model was missing), fix the prerequisite and rerun the checks below in
+that same environment. Do not rerun the installer on an existing prefix.
+Alternative prefixes can be validated interactively; the supplied workflow
+scripts still force `mofa_env_py312` and do not select an alternative via PBS.
+
+## 4. Check the installation
+
+For initial checks, or to retry validation without reinstalling:
 
 ```bash
-python --version                                  # 3.10.x
-python -c "import redis; print('redis-py', redis.__version__)"   # 5.x
-python -c "import cupy; print('CuPy', cupy.__version__)"          # 13.6.0
-command -v redis-server mongod chargemol simulate monitor_utilization
+# Select the actual installed prefix for interactive checks.
+export MOFA_ENV="$PWD/mofa_env_py312"
+source bin/activate-mofa-polaris.sh
+python bin/check-polaris.py --models --external
+python run_parallel_workflow.py --help
+python tests/test_polaris_environment.py
+python tests/test_polaris_launchers.py
+python tests/test_mace_import_order.py
 ```
 
-CUDA device discovery is checked later from inside a PBS job — login nodes do not
-expose a compute GPU.
+Preflight checks the interpreter path, exact Python/package pins, `pip check`,
+MOFA imports, native commands, MPI linkage, external paths, and model inputs.
+`--models` loads DiffLinker on CPU, populates MACE's foundation-model cache,
+and tests MACE energy/forces in fresh processes with both Open Babel and
+`mofa.model` imported first. This covers the native import-order crash seen in
+the previous Python 3.10/Torch 2.1 environment without changing application
+imports. CuPy belongs to the external LAMMPS environment.
 
-## 3. Build CP2K
+On compute nodes, `--gpu` also performs a Torch CUDA calculation; both job
+scripts run `--gpu --external` before starting services. Do not run GPU CP2K
+on a login node, even with `--version`.
 
-CP2K must be built on a compute node (its CUDA build steps need a GPU). Start an
-interactive job, then run the build script, which requires `$PBS_JOBID`:
+Preflight validates the runtime. Full workflow validation requires running the
+smoke simulation below and inspecting its results.
 
-```bash
-qsub -I -l select=1:system=polaris -l walltime=02:00:00 \
-     -l filesystems=home:eagle -q debug -A ChemGraph
-# inside the interactive job, from the repo root:
-bash build-cp2k.sh
-```
+Sample inputs and standalone tests are also provided in
+[cp2k-test](../cp2k-test/README.md) and [lammps-test](../lammps-test/README.md).
+They use the same external runtime wrappers. The LAMMPS examples include their
+structure data and use the MACE model prepared above. Test outputs stay in
+ignored local run directories; only inputs, test code, and usage are shared.
 
-`build-cp2k.sh` configures the working Polaris module stack for CP2K:
+## 5. Run simulations
 
-- `PrgEnv-gnu` + `gcc-native/12.3` through the Cray compiler wrappers,
-- `cuda/11.8` loaded **only** to satisfy `craype-accel-nvidia80`'s CPE-CUDA
-  prerequisite (it provides the A100 target and CUDA-aware Cray MPI/GTL linkage),
-  then unloaded,
-- `cudatoolkit-standalone/12.8.1` for the actual toolchain and runtime,
-- `cray-libsci` and `cray-fftw`.
-
-It builds the CP2K toolchain, then the `local` and `local_cuda` `ssmp`/`psmp`
-targets, and verifies each executable's CUDA 12.8.1 runpath, NVRTC, MPI GTL, and
-LibSci linkage. Previous builds are moved aside with a `pre-cuda128-<timestamp>`
-suffix rather than deleted.
-
-The MOFA workflow uses this CUDA shell executable:
-
-```text
-deps/cp2k-2025.1/exe/local_cuda/cp2k_shell.psmp   # symlink -> cp2k.psmp
-```
-
-> **Why not `cuda/12.9`?** An earlier build used `cuda/12.9`, and CP2K then
-> crashed at the first SCF step at runtime (surfacing in MOFA as
-> `run_optimization ... AssertionError()`). The `cuda/11.8` prerequisite +
-> `cudatoolkit-standalone/12.8.1` stack above is the one that runs correctly.
-> The runtime module stack in `configs/polaris/polaris-repo.py`
-> (`cp2k_worker_init`) must match the one used here.
-
-Do not run a CUDA CP2K executable on the login node — CP2K initializes CUDA even
-for `--version`, and the login node has no compute GPU (`cuInit` error 100).
-
-## 4. Build LAMMPS
-
-LAMMPS ML-IAP embeds Python and PyTorch, so it is built against its own venv, not
-`mofa_env`. From an interactive compute-node job, at the repository root:
-
-```bash
-bash polaris-build/build-lammps-polaris.sh
-```
-
-`build-lammps-polaris.sh`:
-
-- loads `PrgEnv-gnu`, `cuda`/`craype-accel-nvidia90`,
-  `cudatoolkit-standalone/12.9.1`, `spack-pe-base cmake`, `cray-fftw`, and
-  `conda` (base),
-- creates `deps/test/lammps-22Jul2025/venv/` (Python 3.12 from
-  `/soft/applications/conda`), installs `../python/wheel_requirements.txt`,
-- builds with Kokkos+CUDA, `ML-IAP`, `ML-SNAP`, `PYTHON`, `FFT_KOKKOS=CUFFT`,
-  `FFT_SINGLE=yes`, MPI on, and `make install-python`.
-
-The resulting binary is:
-
-```text
-deps/test/lammps-22Jul2025/build-mliap-no-mpi/lmp
-```
-
-Then install the MACE stack into the **LAMMPS venv** (needed to build the model
-in step 5 and for the ML-IAP runtime):
-
-```bash
-source deps/test/lammps-22Jul2025/venv/bin/activate
-pip install mace-torch==0.3.13 cuequivariance-torch cuequivariance-ops-torch-cu12
-python -c "import lammps; print(lammps.__file__)"   # resolves inside the venv
-deactivate
-```
-
-## 5. Prepare the MACE model
-
-Download the MACE-MP-0 medium model and convert it to the LAMMPS ML-IAP format,
-using the LAMMPS venv (it has `cuequivariance` and `mace-torch`):
-
-```bash
-source deps/test/lammps-22Jul2025/venv/bin/activate
-cd input-files/mace
-bash get-macemp-0a.sh                 # downloads mace-mp0_medium
-python create_lammps_model.py mace-mp0_medium --dtype float32 --format mliap
-cd ../..
-deactivate
-```
-
-This produces:
-
-```text
-input-files/mace/mace-mp0_medium-mliap_lammps.pt
-```
-
-`create_mliap_model.py` is a no-CuEquivariance fallback kept for environments
-that pin Torch 2.1; the `--format mliap` path above is the one MOFA uses.
-
-## 6. Executor environments
-
-All executor environments are defined in `configs/polaris/polaris-repo.py` and
-applied in `make_parsl_config()`.
-
-- **CP2K executor** — uses `cp2k_worker_init`, which loads the same CP2K module
-  stack as the build (`cuda/11.8` → `craype-accel-nvidia80` →
-  `cudatoolkit-standalone/12.8.1`, `cray-libsci`, `cray-fftw`, `CUDA_PATH`,
-  `MPICH_GPU_SUPPORT_ENABLED`) and activates `mofa_env`. The `dft_cmd` computed
-  field launches `deps/cp2k-2025.1/exe/local_cuda/cp2k_shell.psmp` under
-  `bin/set-affinity-gpu-polaris.sh` with `mpiexec -n 4 --ppn 4` on a single node
-  (`nodes_per_cp2k=1`).
-- **LAMMPS executor** — the Parsl worker uses the generic `worker_init`
-  (`mofa_env`), but every `lmp` invocation goes through the wrapper
-  `bin/run-lammps-polaris.sh`, which activates the **LAMMPS venv** and loads
-  `cudatoolkit-standalone/12.9.1` in the child process. LAMMPS therefore runs
-  against a different Python than the rest of MOFA on purpose: its ML-IAP C++ ABI
-  and Torch must match that venv. Launch flags (`-k on g 1 -sf kk -pk kokkos ...`)
-  come from `lammps_cmd`.
-
-To change paths, module versions, or launch layout, edit
-`configs/polaris/polaris-repo.py` (and `bin/run-lammps-polaris.sh` for the LAMMPS
-runtime) — not the run scripts.
-
-## 7. Validate CP2K standalone (optional but recommended)
-
-Before the full workflow, confirm CP2K itself runs. From an interactive job:
-
-```bash
-# single node
-bash cp2k-test/run-polaris.sh
-# two nodes (needs -l select=2)
-bash cp2k-test/run-polaris-2node.sh
-```
-
-Each writes a `run-*/cp2k.out`; success is the `PROGRAM ENDED AT` marker.
-
-## 8. Run the workflow
-
-One-node smoke test first, then the multi-node scaling test:
+Once the prerequisites and login-node checks pass, no manual environment
+activation or exports are needed for default submissions. Submit from the
+repository root so PBS supplies the correct `PBS_O_WORKDIR`:
 
 ```bash
 qsub run-polaris-local-smoke.sh
-qstat -u "$USER"
-# after it succeeds:
-qsub run-polaris-repo-test.sh
+# Inspect the smoke's simulation results before scaling:
+qsub -v MOFA_SIMULATION_BUDGET=8 run-polaris-repo-test.sh
 ```
 
-Outputs land under `run/parallel-local-smoke-*` and `run/parallel-polaris-repo-*`.
-Each run directory contains `run.log`, `params.json`, `compute-config.json`, the
-MongoDB `db/`, service logs, per-node task logs, and results JSON. Confirm
-`run.log` shows CP2K tasks succeeding (no `Task run_optimization failed ...
-AssertionError()`) and that `dft-runs/mof-*-optimize-default/` hold non-empty
-outputs.
+| Setting | `run-polaris-local-smoke.sh` | `run-polaris-repo-test.sh` |
+| --- | --- | --- |
+| Nodes / queue | 1 / `debug` | 10 / `debug-scaling` |
+| Walltime / allocation | 1 hour / `ChemGraph` | 1 hour / `ChemGraph` |
+| Default simulation budget | 8 | `-1` (unlimited) |
+| Samples / generation batch | 8 / 8 | 128 / 64 |
+| MD timesteps | 100 | 1,000 |
+| DFT optimization steps | 1 | 2 |
+| RASPA cycles | 100 | 10,000 |
+| CP2K | Serial shell on the GPU executor | Two nodes/task, four ranks/node, eight threads/rank |
+| LAMMPS | One GPU worker | Two clients/GPU, with MPS |
 
-## Troubleshooting
+`MOFA_SIMULATION_BUDGET` overrides the budget in either script. Without an
+override, `qsub run-polaris-repo-test.sh` runs with an unlimited budget until
+another termination condition, such as walltime. Budget 8 is a workflow
+scheduling limit, not a guarantee of eight completed MOFs or an exact count of
+all attempts. Inspect each stage's results.
 
-- **CP2K `AssertionError` / SCF crash in MOFA:** The CP2K runtime CUDA stack does
-  not match the build. Ensure `cp2k_worker_init` in
-  `configs/polaris/polaris-repo.py` loads `cuda/11.8` +
-  `cudatoolkit-standalone/12.8.1` (not `cuda/12.9`), matching `build-cp2k.sh`.
-- **CP2K `cuInit` error 100:** You ran a CUDA executable on the login node. Run
-  inside a PBS compute job.
-- **LAMMPS import/ABI errors:** LAMMPS must run from its own venv via
-  `bin/run-lammps-polaris.sh`, not `mofa_env`. Rebuild with
-  `polaris-build/build-lammps-polaris.sh` if the tree is stale.
-- **ML-IAP `compute_forces failure` / `cupy` undefined:** Update `mofa_env` from
-  `envs/environment-polaris.yml`; the bridge needs `cupy-cuda12x==13.6.0`.
-- **The MACE model is missing:** Re-run step 5 inside the LAMMPS venv.
+### Environment changes and PBS overrides
 
-## Note on the canonical build scripts
+Compared with the previous repository-local instructions:
 
-The canonical, working builds are **`build-cp2k.sh`** (repo root) and
-**`polaris-build/build-lammps-polaris.sh`**. An older
-`polaris-build/build-cp2k-polaris.sh` remains in the tree but targets a different
-CUDA stack (`cuda/12.9`) that did not run correctly here — prefer `build-cp2k.sh`.
+- `mofa_env` (Python 3.10/Torch 2.1) is replaced by `mofa_env_py312`
+  (Python 3.12.13/Torch 2.5.0+cu124). Both scripts **overwrite `MOFA_ENV`**
+  before activation, even if supplied with `qsub -v MOFA_ENV=...` or inherited
+  via `qsub -V`. Submit these scripts without a `MOFA_ENV` override.
+- LAMMPS and CP2K now use the external roots in section 1 instead of `deps/`.
+  `LAMMPS_ROOT`, `LAMMPS_VENV`, `CP2K_ROOT`, `CP2K_DATA_DIR`, and
+  `MOFA_CONDA_MODULE` remain supported overrides. Distributed workers receive
+  the same selected paths as the driver, and RASPA uses the selected MOFA prefix.
+- `MOFA_SIMULATION_BUDGET` is now available instead of editing each script's
+  `--simulation-budget` argument. It defaults to 8 for smoke and -1 for scaling.
+
+Exports in the submission shell alone are not forwarded to PBS. Use `qsub -v`
+for selected overrides. For example, replace these illustrative paths with
+accessible installations matching the runtime modules:
+
+```bash
+qsub -v LAMMPS_ROOT=/shared/lammps,CP2K_ROOT=/shared/cp2k \
+    run-polaris-local-smoke.sh
+# Separate LAMMPS Python environment and CP2K data locations:
+qsub -v MOFA_SIMULATION_BUDGET=8,LAMMPS_ROOT=/shared/lammps,LAMMPS_VENV=/shared/lammps-env,CP2K_ROOT=/shared/cp2k,CP2K_DATA_DIR=/shared/cp2k-data \
+    run-polaris-repo-test.sh
+```
+
+The first example derives `.venv` and `data` from the supplied roots. Alternatively,
+export all selected variables and pass their names with `qsub -v NAME,...`.
+Use `qsub -A YOUR_ALLOCATION ...` to override the script's allocation when needed.
+
+### Variables managed by the scripts
+
+`PBS_O_WORKDIR`, `PBS_JOBID`, and `PBS_NODEFILE` come from PBS; do not set them
+manually to launch a workflow on the login node. Activation loads the selected
+Conda module and `cray-mpich-abi`, sets `PYTHONNOUSERSITE=1` and
+`PYTHONFAULTHANDLER=1`, and clears `PYTHONHOME`/`PYTHONPATH`. It sets
+`OPENBLAS_NUM_THREADS`, `GOTO_NUM_THREADS`, and `OMP_NUM_THREADS` to 1;
+the distributed CP2K launcher separately sets eight OpenMP threads per rank.
+`TMPDIR=/tmp` keeps multiprocessing socket paths short. `MPLCONFIGDIR` and
+`XDG_CACHE_HOME` point into `.runtime-cache/$PBS_JOBID/`.
+
+The wrappers select CUDA/MPI runtime variables and GPU affinity. Users do not
+need to export `CUDA_VISIBLE_DEVICES`, `CP2K_BINARY`, or thread settings for
+these submissions. The scripts start and stop Redis; the scaling script also
+manages MPS. Redis persistence is disabled and its working directory is
+`.runtime-cache/$PBS_JOBID/redis`, avoiding an old repository `dump.rdb`.
+
+### Production entrypoint
+
+After validating the workflow, `qsub run-polaris-repo.sh` requests **16 nodes**
+in `prod` for **3 hours** using allocation **IQC**, with an unlimited default
+simulation budget. It has the same environment selection and override rules.
+This differs from the ChemGraph smoke and repository-test jobs; override the
+allocation with `qsub -A` if needed.
+
+## 6. Inspect results and known limitations
+
+PBS stdout/stderr use job names `mofa-smoke` and `mofa-test`. Redis logs are
+`redis-$PBS_JOBID.log`. Workflow results are under `run/parallel-local-smoke-*`
+and `run/parallel-polaris-repo-*`, including `run.log`, `params.json`, Parsl logs,
+and task result JSON files. Inspect successful generation and MACE relaxation,
+completed MD trajectories, CP2K and ChargeMol results, and stored RASPA uptake
+before scaling. `MOFAThinker completed` alone is not proof of successful science.
+
+Local testing of the external CP2K/ELPA build reproduced a structure-dependent
+GPU solver crash. Block size 32 worked for the tested crash cases but has not
+been applied to production MOFA inputs. It did not resolve every SCF convergence
+failure. Because `IGNORE_CONVERGENCE_FAILURE` can let CP2K return normally with
+unconverged SCF, inspect convergence explicitly. The production workaround and
+stricter scientific acceptance remain follow-up work.

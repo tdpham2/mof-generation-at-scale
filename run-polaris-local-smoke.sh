@@ -11,45 +11,20 @@ set -euo pipefail
 cd "${PBS_O_WORKDIR:?Submit this script from the MOFA repository root}"
 repo_root=$PWD
 echo "Repository: ${repo_root}"
-# Runtime for the MOFA workflow and CP2K. The LAMMPS launcher selects its
-# ABI-matched Python environment and CUDA module in its child process.
-module reset
-module use /soft/modulefiles
-module load gcc
-module load cudatoolkit-standalone/12.8
-module load conda
-conda activate base
-
-conda activate "${repo_root}/mofa_env"
-export PATH="${repo_root}/mofa_env/bin:${PATH}"
-export CP2K_DATA_DIR="${repo_root}/deps/cp2k-2025.1/data"
-export OPENBLAS_NUM_THREADS=1
-export GOTO_NUM_THREADS=1
-export OMP_NUM_THREADS=1
-
-# Several chemistry/ML imports initialize font and Matplotlib caches. Keep
-# them off the home filesystem and give worker processes a writable location.
-runtime_cache="${repo_root}/.runtime-cache/${PBS_JOBID}"
-mkdir -p "${runtime_cache}/matplotlib" "${runtime_cache}/xdg"
-export MPLCONFIGDIR="${runtime_cache}/matplotlib"
-export XDG_CACHE_HOME="${runtime_cache}/xdg"
-
-cp2k_shell="${repo_root}/deps/cp2k-2025.1/exe/local_cuda/cp2k_shell.ssmp"
+export MOFA_ENV="${repo_root}/mofa_env_py312"
+# Runtime for the MOFA workflow. External simulation launchers load their
+# matching modules and, for LAMMPS, Python environment in child processes.
+source "${repo_root}/bin/activate-mofa-polaris.sh"
+python "${repo_root}/bin/check-polaris.py" --gpu --external
 mace_model="${repo_root}/input-files/mace/mace-mp0_medium-mliap_lammps.pt"
-lammps_root="${repo_root}/deps/test/lammps-22Jul2025"
-lammps_exe="${lammps_root}/build-mliap-no-mpi/lmp"
-lammps_activate="${lammps_root}/venv/bin/activate"
-
-if [[ ! -x "${cp2k_shell}" ]]; then
-    echo "Missing ${cp2k_shell}"
-    echo 'Build CP2K first with build-cp2k.sh (see polaris-build/instruction.md).'
-    exit 2
-fi
-
 
 redis_log="${repo_root}/redis-${PBS_JOBID}.log"
+redis_dir="${repo_root}/.runtime-cache/${PBS_JOBID}/redis"
+mkdir -p "${redis_dir}"
 redis-server \
     --bind 127.0.0.1 \
+    --dir "${redis_dir}" \
+    --save "" \
     --appendonly no \
     --protected-mode no \
     --logfile "${redis_log}" &
@@ -59,6 +34,18 @@ cleanup() {
     kill "${redis_pid}" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
+
+for _ in $(seq 1 30); do
+    if redis-cli -h 127.0.0.1 ping 2>/dev/null | grep -q PONG; then
+        break
+    fi
+    if ! kill -0 "${redis_pid}" 2>/dev/null; then
+        echo "Redis exited during startup. See ${redis_log}." >&2
+        exit 2
+    fi
+    sleep 1
+done
+redis-cli -h 127.0.0.1 ping | grep -q PONG
 
 python run_parallel_workflow.py \
     --node-path input-files/zn-paddle-pillar/node.json \
@@ -72,7 +59,7 @@ python run_parallel_workflow.py \
     --num-samples 8 \
     --gen-batch-size 8 \
     --minimum-ligand-pool 2 \
-    --simulation-budget 8 \
+    --simulation-budget "${MOFA_SIMULATION_BUDGET:-8}" \
     --retrain-freq 1000 \
     --num-epochs 1 \
     --md-timesteps 100 \
